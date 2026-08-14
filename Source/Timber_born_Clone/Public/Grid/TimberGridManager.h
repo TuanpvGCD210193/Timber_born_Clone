@@ -149,12 +149,47 @@ public:
 	void ClearAllInstances();
 
 	// ==========================================
+	// TREE LIFECYCLE CONFIG & ACTIONS (STEP 1.4)
+	// ==========================================
+
+	/** Cấu hình thời gian sinh trưởng & lượng gỗ của cây */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Tree Lifecycle")
+	FTreeGrowthConfig TreeConfig;
+
+	/** Chặt 1 cây trưởng thành hoặc cây non -> biến thành Gốc cây (Stump) và thu được Gỗ */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Tree Actions")
+	bool ChopTree(const FIntVector& Coord, int32& OutWoodEarned);
+
+	/** Trồng 1 mầm cây non (TreeSapling) mới lên ô lưới */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Tree Actions")
+	bool PlantSapling(const FIntVector& Coord);
+
+	/** Cập nhật bộ đếm thời gian sinh trưởng của các gốc cây và mầm cây */
+	void AdvanceTreeGrowth(float DeltaTime);
+
+	// ==========================================
 	// PROCEDURAL TERRAIN & FOREST ACTIONS
 	// ==========================================
 
 	/** Sinh bản đồ địa hình phân tầng (Dirt, Grass, Cliff) và các cụm rừng hữu cơ tự nhiên */
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions")
 	void GenerateNaturalTerrainAndForests();
+
+	/** Lưu trữ bền vững dữ liệu ô lưới hiện tại vào Actor / Level Package */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions")
+	void SaveTerrainData();
+
+	/** Phục hồi và tái tạo lại địa hình từ dữ liệu đã lưu */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions")
+	void LoadTerrainData();
+
+	// ==========================================
+	// SAVED DATA PERSISTENCE
+	// ==========================================
+
+	/** Dữ liệu lưu trữ bền vững của ô lưới (được serialize lưu vào file .umap) */
+	UPROPERTY(SaveGame)
+	TArray<FTimberCell> SavedGridData;
 
 	// ==========================================
 	// GETTERS & DEBUG

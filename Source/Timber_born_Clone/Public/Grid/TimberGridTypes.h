@@ -110,28 +110,64 @@ struct FTimberBlockMeshConfig
 };
 
 /**
- * Cấu hình sinh địa hình đồi núi phân tầng tự nhiên
+ * Cấu hình sinh địa hình cao nguyên đa tầng & vách đá lồi lõm
  */
 USTRUCT(BlueprintType)
 struct FTerrainGenConfig
 {
 	GENERATED_BODY()
 
-	/** Độ cao mặt đất cơ bản (số tầng block, vd: 1) */
+	/** Map Seed (0 = Random mỗi lần, >0 = Tái tạo chính xác thế bản đồ) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen")
+	int32 MapSeed = 0;
+
+	/** Độ cao mặt đất cơ bản (số tầng block, vd: 2) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen", meta = (ClampMin = "1", ClampMax = "10"))
-	int32 BaseHeight = 1;
+	int32 BaseHeight = 2;
 
-	/** Số lượng ngọn đồi / cao nguyên đá nhô lên */
+	/** Số lượng cao nguyên đồi núi chính */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen", meta = (ClampMin = "0", ClampMax = "10"))
-	int32 HillCount = 2;
+	int32 PlateauCount = 2;
 
-	/** Bán kính mỗi ngọn đồi (số ô lưới) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen", meta = (ClampMin = "2", ClampMax = "20"))
-	int32 HillRadius = 5;
+	/** Bán kính vùng cao nguyên */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen", meta = (ClampMin = "3", ClampMax = "30"))
+	int32 PlateauRadius = 11;
 
-	/** Chiều cao thêm của đồi núi (số tầng block) */
+	/** Số bậc thang cao nguyên xếp chồng (hỗ trợ đồi núi nhiều tầng hùng vĩ) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen", meta = (ClampMin = "1", ClampMax = "10"))
+	int32 MaxTiers = 3;
+
+	/** Chiều cao mỗi bậc thang (số block) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen", meta = (ClampMin = "1", ClampMax = "8"))
-	int32 HillHeight = 2;
+	int32 TierHeight = 2;
+
+	/** Độ lồi lõm so le của các cột vách đá (0.0 = phẳng, 1.0 = răng cưa phong hóa tự nhiên) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float CliffJaggedness = 0.45f;
+
+	// --- PHÂN BỔ BỀ MẶT HỮU CƠ (CỎ / ĐẤT HOANG ĐẠI VÙNG - HÌNH 2 & 3) ---
+
+	/** Tần số uốn lượn hữu cơ của ranh giới (0.045 = tạo đại vùng đồng cỏ và đất hoang liền mạch rộng lớn) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Biomes", meta = (ClampMin = "0.01", ClampMax = "1.0"))
+	float NoiseScale = 0.045f;
+
+	/** Tỷ lệ phủ Cỏ tươi tốt trên bề mặt (0.0 đến 1.0) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Biomes", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float GrassRatio = 0.50f;
+
+	/** Độ dày dải Đá đệm tự nhiên uốn lượn giữa Cỏ và Đất (0.0 = không vẽ viền ruy băng) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Biomes", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float RockBandWidth = 0.0f;
+
+	/** Đỉnh cao nhất của cao nguyên luôn là khối Đá (Cliff) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Biomes")
+	bool bHillTopAlwaysRock = true;
+
+	// --- QUY TẮC ĐI LẠI (WALKABILITY) ---
+
+	/** Độ chênh lệch chiều cao tối đa cho phép leo trèo (1 block đi được, >=2 block chặn) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Walkability", meta = (ClampMin = "1", ClampMax = "5"))
+	int32 MaxClimbableHeight = 1;
 };
 
 /**
@@ -148,7 +184,7 @@ struct FForestClusterConfig
 
 	/** Bán kính mỗi cụm rừng (số ô lưới) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Forest Gen", meta = (ClampMin = "2", ClampMax = "20"))
-	int32 ClusterRadius = 4;
+	int32 ClusterRadius = 5;
 
 	/** Mật độ cây tại tâm cụm rừng (0.0 đến 1.0) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Forest Gen", meta = (ClampMin = "0.1", ClampMax = "1.0"))
@@ -157,4 +193,43 @@ struct FForestClusterConfig
 	/** Mật độ cây tại rìa mép cụm rừng (0.0 đến 1.0) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Forest Gen", meta = (ClampMin = "0.0", ClampMax = "0.5"))
 	float EdgeDensity = 0.20f;
+
+	// --- PHÂN CẤP MẬT ĐỘ THEO LOẠI KHỐI (STEP 1.3.3) ---
+
+	/** Hệ số mật độ cây mọc trên nền Cỏ xanh (Dày đặc) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Forest Gen|Biomes", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float GrassTreeDensity = 0.90f;
+
+	/** Hệ số mật độ cây mọc trên nền Đất khô (Thưa thớt) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Forest Gen|Biomes", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float DirtTreeDensity = 0.25f;
+
+	/** Hệ số mật độ cây mọc trên nền Đá (Tuyệt đối 0.0 = không mọc trên đá) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Forest Gen|Biomes")
+	float RockTreeDensity = 0.0f;
+};
+
+/**
+ * Cấu hình thời gian sinh trưởng và vòng đời của Cây Rừng (Step 1.4)
+ */
+USTRUCT(BlueprintType)
+struct FTimber_born_Clone_API FTreeGrowthConfig
+{
+	GENERATED_BODY()
+
+	/** Bật/tắt cơ chế cây tự động mọc lại sau khi đốn */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tree Lifecycle")
+	bool bAutoRegrowth = true;
+
+	/** Thời gian gốc cây (Stump) hồi sinh thành Cây con (Sapling) - tính bằng giây */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tree Lifecycle", meta = (ClampMin = "1.0"))
+	float StumpToSaplingDuration = 10.0f;
+
+	/** Thời gian Cây con (Sapling) lớn thành Cây trưởng thành (Mature) - tính bằng giây */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tree Lifecycle", meta = (ClampMin = "1.0"))
+	float SaplingToMatureDuration = 15.0f;
+
+	/** Lượng Gỗ thu được khi chặt 1 cây trưởng thành */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tree Lifecycle", meta = (ClampMin = "1"))
+	int32 WoodPerMatureTree = 2;
 };

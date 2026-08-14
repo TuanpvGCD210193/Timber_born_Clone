@@ -17,16 +17,27 @@
 * **`Block ISMMap`**: Danh sách `UInstancedStaticMeshComponent` do C++ tự động tạo ngầm bên dưới (chỉ đọc, tối ưu hóa 1 Draw Call).
 
 ### B. Nhóm **Generation (Thông Số Sinh Địa Hình & Cụm Rừng)**
-* **`Terrain Config` (Sinh Đồi Núi & Địa Hình Phân Tầng)**:
-  * **`Base Height` (= 1)**: Độ cao mặt đất phẳng cơ bản (1 tầng block).
-  * **`Hill Count` (= 2)**: Số lượng ngọn đồi/cao nguyên đá nhô lên khỏi mặt đất.
-  * **`Hill Radius` (= 5)**: Bán kính mở rộng của mỗi ngọn đồi (theo số ô lưới).
-  * **`Hill Height` (= 2)**: Chiều cao cộng thêm của mỗi ngọn đồi (số tầng block nhô cao).
-* **`Forest Config` (Sinh Cụm Rừng Hữu Cơ)**:
+* **`Terrain Config` (`FTerrainGenConfig`)**:
+  * **`Map Seed` (= 0)**: Mã hạt giống ngẫu nhiên (`0`: Sinh map ngẫu nhiên mới mỗi lần bấm; `> 0`, ví dụ `1337`: Tái tạo chính xác $100\%$ thế bản đồ cố định).
+  * **`Base Height` (= 2)**: Độ cao mặt đất phẳng cơ bản (số tầng block nền).
+  * **`Plateau Count` (= 2)**: Số lượng vùng cao nguyên đồi núi chính xuất hiện trên bản đồ.
+  * **`Plateau Radius` (= 8)**: Bán kính mở rộng của mỗi ngọn đồi cao nguyên (theo số ô lưới).
+  * **`Max Tiers` (= 3)**: Số bậc thang cao nguyên nhấp nhô xếp chồng lên nhau ($1 - 10$ tầng).
+  * **`Tier Height` (= 2)**: Chiều cao của mỗi bậc thang (số block dựng đứng).
+  * **`Cliff Jaggedness` (= 0.45)**: Độ lồi lõm so le răng cưa phong hóa tự nhiên của các cột vách đá (Hình 2).
+  * **`Noise Scale` (= 0.12)**: Tần số uốn lượn hữu cơ của ranh giới giữa Cỏ, Đất và Đá (Hình 5).
+  * **`Grass Ratio` (= 0.55)**: Tỷ lệ phủ Cỏ xanh tươi tốt màu mỡ trên bề mặt ($55\%$).
+  * **`Rock Band Width` (= 0.08)**: Độ dày của dải Đá đệm tự nhiên uốn lượn nằm giữa Cỏ và Đất ($8\%$).
+  * **`bHillTopAlwaysRock` (= true)**: Đỉnh cao nhất của cao nguyên luôn được phủ khối Đá xám (`Cliff`).
+  * **`Max Climbable Height` (= 1)**: Độ chênh lệch chiều cao tối đa cho phép Hải ly leo trèo ($1$ block đi lại được, $\ge 2$ block bị chặn).
+* **`Forest Config` (`FForestClusterConfig`)**:
   * **`Cluster Count` (= 3)**: Số lượng cụm rừng xuất hiện trên bản đồ.
   * **`Cluster Radius` (= 4)**: Bán kính lan tỏa của mỗi cụm rừng.
   * **`Center Density` (= 0.85)**: Mật độ phủ cây tại tâm cụm rừng ($85\%$).
   * **`Edge Density` (= 0.20)**: Mật độ phủ cây thưa dần khi ra đến rìa mép rừng ($20\%$).
+  * **`Grass Tree Density` (= 0.85)**: Tỷ lệ phân cấp mọc cây dày đặc trên nền Cỏ xanh.
+  * **`Dirt Tree Density` (= 0.25)**: Tỷ lệ phân cấp mọc cây thưa thớt trên nền Đất khô.
+  * **`Rock Tree Density` (= 0.00)**: Tuyệt đối $0\%$ cây mọc trên nền Đá / Vách đá.
 
 ### C. Hướng Dẫn Thao Tác Gán 4 Khối Chuẩn (`Dirt`, `Grass`, `Cliff`, `TreeMature`):
 1. Tại **Block Mesh Configs**, bấm nút `(+)` để tạo đủ 4 phần tử.
@@ -43,22 +54,24 @@
 
 ## 🌍 2. BẢNG THÔNG SỐ & CƠ CHẾ ĐỊA HÌNH & TÀI NGUYÊN (TERRAIN & RESOURCES)
 
-### 🌍 1. Phân Tầng Địa Hình Tự Nhiên (Natural Terrain Layering)
-- **Quy tắc phân tầng**:
-  - **Lớp Mặt Trên (Top Layer)**: Ô trên cùng tiếp xúc trực tiếp với không khí là **Cỏ (`Grass`)**.
-  - **Lớp Đất Dưới Sâu (Subsurface Layer)**: Toàn bộ các khối nằm dưới mặt cỏ là **Đất (`Dirt`)**.
-  - **Cao Nguyên & Đồi Núi (Hills & Plateaus)**: Các ngọn đồi/vách núi cao 1–3 tầng nhô lên khỏi mặt đất phẳng. Các vách đứng là **Đá (`Cliff/Rock`)**, mặt phẳng trên đỉnh đồi được phủ **Cỏ (`Grass`)**.
+### 🌍 1. Phân Tầng & Phối Hợp Địa Hình Hữu Cơ Đa Khối (Organic Multi-Block Surface on Same Height)
+- **Quy tắc Bề mặt trên cùng một tầng độ cao ($Z$)**:
+  - Trên cùng một mặt phẳng độ cao, bề mặt được phối hợp tự nhiên giữa **3 loại khối**:
+    1. **`Grass` (Cỏ xanh)**: Đại diện cho vùng đất màu mỡ, tươi tốt.
+    2. **`Dirt` (Đất khô)**: Đại diện cho vùng đất khô cằn, hoang mạc.
+    3. **`Cliff` (Đá)**: Xuất hiện ở các **vách đứng cao nguyên** và dải đệm tự nhiên uốn lượn nằm giữa Cỏ và Đất.
+  - **Mối nối chuyển tiếp hữu cơ (Organic Noise Transitions)**: Ranh giới giữa Cỏ, Đất và Đá uốn lượn răng cưa tự nhiên theo hàm nhiễu hữu cơ (Perlin Noise), loại bỏ hoàn toàn các khối vuông vức $5 \times 5$ đơn điệu.
+  - **Lớp Đất Dưới Sâu (Subsurface Layer)**: Toàn bộ phần thân đồi bên trong và tầng đáy sâu là khối `Dirt` hoặc `Cliff`.
 - **Tính chất Đi lại (`bIsWalkable`)**:
-  - Các ô bề mặt `Grass` là có thể đi lại (`bIsWalkable = true`).
-  - Hải ly có thể bước lên/xuống độ cao chênh lệch tối đa 1 block ($100$ cm).
-  - Vách đá dựng đứng cao $> 1$ block sẽ chặn di chuyển cho đến khi xây cầu thang/bậc dốc.
+  - Các ô bề mặt `Grass` và `Dirt` là có thể đi lại (`bIsWalkable = true`).
+  - Vách đá dựng đứng cao $> 1$ block sẽ chặn di chuyển (`bIsWalkable = false`).
 
 ---
 
 ### 🌲 2. Cụm Rừng Hữu Cơ (Organic Forest Clusters) & Tái Sinh Cây
-- **Phân Bổ Tự Nhiên (Organic Density)**:
-  - Cây **chỉ mọc trên bề mặt Cỏ (`Grass`)**, tuyệt đối không mọc trên Vách Đá (`Cliff`) hay Nước (`Water`).
-  - Rừng sinh theo từng cụm: Mật độ dày đặc ở tâm cụm và thưa dần khi tiến ra rìa mép rừng (Gaussian / Radial Falloff).
+- **Phân Bổ Tự Nhiên**:
+  - Cây **chỉ mọc trên bề mặt Cỏ (`Grass`)**, tuyệt đối **KHÔNG mọc trên Vách Đá (`Cliff`)**.
+  - Rừng sinh theo cụm với mật độ giảm dần từ tâm ra rìa (Radial Falloff).
 - **Vòng Đời Cây (Tree Lifecycle)**:
   1. `Stump / Empty`: Gốc cây sau khi đốn (Đếm ngược thời gian hồi).
   2. `Sapling`: Cây non mọc lại.
@@ -137,14 +150,24 @@ d:\UE Project\Timber_born_Clone\
 
 ## 📋 4. LỘ TRÌNH TRIỂN KHAI MICRO-STEPS
 
-- **Phase 1: Địa hình Grid, Rừng cây & Công cụ In-Editor**
+- **Phase 1: Địa hình Grid, Rừng cây & Khối Cơ Bản [HOÀN THÀNH 100%]**
   - `Step 1.1`: [XONG] Khởi tạo Cấu trúc thư mục Public/Private và Content.
   - `Step 1.2`: [XONG] Core Grid Data (`FTimberCell`, `ETimberBlockType`, `ATimberGridManager`).
-  - `Step 1.3`: [XONG] Dynamic ISM Rendering cho Đất/Cỏ/Đá & Thuật toán Sinh Địa hình Phân tầng + Cụm Rừng Hữu cơ.
-    - `Feat 1.3.1`: [ĐANG THỰC HIỆN] Thanh Tiến Độ Unreal Editor (`FScopedSlowTask`) & Visual Progress Log (Cập nhật tiến trình từng 20%).
-  - `Step 1.4`: Quản lý Vòng đời Sinh trưởng của Cây (Sapling $\rightarrow$ Mature).
-  - `Step 1.5`: Công cụ In-Editor (Click chuột vẽ / sửa địa hình trực tiếp trong Viewport).
-- **Phase 2: Mạng Lưới Đường Đi & Thuật Toán A* Pathfinding**
+  - `Step 1.3`: Refactor Thuật Toán Sinh Địa Hình Đa Khối Hữu Cơ & Persistence:
+    - `Step 1.3.1`: [XONG] Thuật toán Cao nguyên 2-3 Tầng Xếp Chồng & Vách Đá Lồi Lõm So Le + Map Seed.
+    - `Step 1.3.2`: [XONG] Phân bổ Bề Mặt Hữu Cơ (Cỏ/Đất/Đá) + Đỉnh Đồi Là Khối Đá + Walkable (chênh 1 block).
+    - `Step 1.3.3`: [XONG] Thuật toán Sinh Cây Phân Cấp Mật Độ (Dày trên Cỏ, Thưa trên Đất, 0% trên Đá).
+    - `Step 1.3.4`: [XONG] Tính năng Lưu Bản Đồ (Save/Load Terrain Persistence) giữ nguyên địa hình khi Rebuild.
+  - `Step 1.4`: [XONG] Quản lý Vòng đời Sinh trưởng của Cây (Stump $\rightarrow$ Sapling $\rightarrow$ Mature).
+  - `Phase 1 Retrospective`: [XONG] Tổng kết mã nguồn, Review Kiến trúc & Đánh giá năng lực Phase 1.
+- **Phase 2: Mạng Lưới Đường Đi & Thuật Toán A* Pathfinding [TIẾP THEO]**
+  - `Step 2.1`: Cấu trúc Dữ liệu Đường Đi & Path Network Graph.
+  - `Step 2.2`: Thuật toán A* Pathfinding 3D (Hỗ trợ chênh lệch độ cao $\le 1$ block).
+  - `Step 2.3`: Hệ thống Kết Nối Đường Đi & Phạm Vi Tác Vụ (Work Range Overlay).
 - **Phase 3: Hệ Thống 3 Công Trình & Cơ Chế Móng Xây Dựng (Construction Site)**
+  - `Step 3.1`: Base Building Actor & Construction Site System.
+  - `Step 3.2`: Triển khai 3 Công Trình Cốt Lõi (Nhà Kho District Center, Trại Đốn Gỗ Lumberjack, Nhà Dân Beaver Lodge).
+  - `Step 3.3`: Hệ Thống Cung Ứng Vật Liệu Xây Dựng (Hauling & Build Progress).
+  - `Step 3.4`: Công cụ In-Editor Brush (Click chuột vẽ / sửa địa hình & đặt công trình trực tiếp trong Viewport).
 - **Phase 4: Hải Ly AI & Vòng Lặp Khai Thác Gỗ**
 - **Phase 5: Camera RTS, Game Speed & UI HUD**
