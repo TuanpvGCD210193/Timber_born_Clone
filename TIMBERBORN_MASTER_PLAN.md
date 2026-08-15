@@ -233,18 +233,46 @@ Mục này cung cấp tài liệu kỹ thuật chuyên sâu và các nguyên lý
   - `Step 2.4`: [XONG] Thiết Lập UE Editor, Tạo Mesh/Material Đường Đi & Visual Testing Trên Viewport.
   - `Phase 2 Retrospective`: [XONG] Tổng kết Mã nguồn, Đồ thị Mạng lưới & Thuật toán A* Pathfinding.
 - **Phase 3: Hệ Thống 3 Công Trình & Cơ Chế Móng Xây Dựng (Construction Site) [TIẾP THEO]**
-  - `Step 3.1`: Base Building Actor & Construction Site System.
-  - `Step 3.2`: Triển khai 3 Công Trình Cốt Lõi (Nhà Kho District Center, Trại Đốn Gỗ Lumberjack, Nhà Dân Beaver Lodge).
-  - `Step 3.3`: Hệ Thống Cung Ứng Vật Liệu Xây Dựng (Hauling & Build Progress).
-  - `Step 3.4`: Công cụ In-Editor Brush (Click chuột vẽ / sửa địa hình & đặt công trình trực tiếp trong Viewport).
-  - `Step 3.5`: [MỚI] Thiết Lập UE Editor, Mesh/Material 3 Công Trình & Testing Viewport.
+  - `Step 3.1`: Base Building Actor & Construction Site System [HOÀN THÀNH 100%]:
+    - `Step 3.1.1`: [XONG] C++ Header & Architecture (Khai báo `EBuildingState`, `ATimberBuildingBase`, Footprint, Door Coord, Wood Cost, Hologram & Mesh Components).
+    - `Step 3.1.2`: [XONG] C++ Implementation Logic & Live In-Editor Sync (Máy trạng thái `SetBuildingState`, `DeliverWood`, `OnConstruction`, `PostEditChangeProperty`).
+    - `Step 3.1.3`: [XONG] Hands-on UE Editor Setup (Tạo Material `M_Hologram_Valid`, `M_Hologram_Invalid`, `M_Scaffold`, tạo Blueprint `BP_BuildingBaseTest`).
+    - `Step 3.1.4`: [XONG] Hands-on Visual Testing Chuyên Biệt Trên Viewport (Kéo thả, đổi trạng thái thời gian thực, kiểm tra 4 hình thái công trình).
+  - `Step 3.2`: Triển khai 3 Công Trình Cốt Lõi (District Center, Storage, Lumberjack Flag) [HOÀN THÀNH 100%]:
+    - `Step 3.2.1`: [XONG] C++ Header & Architecture (`ATimberDistrictCenter`, `ATimberStorage`, `ATimberLumberjackFlag`).
+    - `Step 3.2.2`: [XONG] C++ Implementation Logic (Sức chứa kho, Slot công nhân, Quét cây trong bán kính).
+    - `Step 3.2.3`: [XONG] Hands-on UE Editor Setup & Testing (Tạo 3 Blueprint `BP_DistrictCenter`, `BP_Storage`, `BP_LumberjackFlag`, gán Mesh và kiểm thử trên Viewport).
+  - `Step 3.3`: Hệ Thống Cung Ứng Vật Liệu Xây Dựng (Hauling & Build Progress) [HOÀN THÀNH 100%]:
+    - `Step 3.3.1`: [XONG] C++ Header & Architecture (`FHaulJob`, `EHaulJobType`, `EHaulJobPriority`, Hauling APIs).
+    - `Step 3.3.2`: [XONG] C++ Implementation Logic (Cung ứng gỗ thi công móng, thanh tiến độ xây, tự động hoàn thiện).
+    - `Step 3.3.3`: [XONG] Hands-on UE Editor Setup & Testing (Nút CallInEditor thử nghiệm giao gỗ & hoàn thiện công trình trực tiếp trên Viewport).
+  - `Step 3.4`: Công cụ In-Editor Brush (Click chuột vẽ / sửa địa hình & đặt công trình trực tiếp trong Viewport):
+    - `Step 3.4.1`: [TIẾP THEO] C++ Header & Architecture (`EBrushMode`, `EBrushToolAction`, Raycast Grid Picking APIs).
+    - `Step 3.4.2`: C++ Implementation Logic (Raycast từ Camera/Cursor chuột -> Lát đường `BuildPath`, Xóa đường `RemovePath`, Đặt móng công trình `SpawnBuilding`).
+    - `Step 3.4.3`: Hands-on UE Editor Setup & Testing (Thử nghiệm kéo chuột vẽ đường đi và click đặt công trình trực tiếp trên Viewport).
 - **Phase 4: Hải Ly AI & Vòng Lặp Khai Thác Gỗ**
-  - `Step 4.1`: Beaver AI Controller & State Machine.
-  - `Step 4.2`: Khai Thác Cây, Vận Chuyển Gỗ & Tích Trữ Vào Kho.
-  - `Step 4.3`: Chu Trình Nghỉ Ngơi Tại Beaver Lodge.
-  - `Step 4.4`: [MỚI] Thiết Lập UE Editor, Mesh Hải Ly, Animation & Testing Chu Trình Làm Việc.
+  - `Step 4.1`: Beaver AI Controller & State Machine:
+    - `Step 4.1.1`: C++ Header & Architecture (`ABeaverAgent`, `EBeaverState`).
+    - `Step 4.1.2`: C++ Implementation Logic (FSM AI, Overlap va chạm, Tìm đường A*).
+    - `Step 4.1.3`: Hands-on UE Editor Setup & Testing (Tạo Blueprint `BP_BeaverCharacter`, gán Mesh/Animation).
+  - `Step 4.2`: Khai Thác Cây, Vận Chuyển Gỗ & Tích Trữ Vào Kho:
+    - `Step 4.2.1`: C++ Header (`IWorkTaskInterface`, Task đốn gỗ & vận chuyển).
+    - `Step 4.2.2`: C++ Implementation Logic (Tìm cây $\rightarrow$ Đốn gỗ $\rightarrow$ Vác về kho).
+    - `Step 4.2.3`: Hands-on UE Editor Setup & Testing (Testing chu trình vận hành thực chiến trên Viewport).
+  - `Step 4.3`: Chu Trình Nghỉ Ngơi & Quản Lý Dân Số:
+    - `Step 4.3.1`: C++ Header (Nhu cầu thể lực & Trú ẩn tại Beaver Lodge).
+    - `Step 4.3.2`: C++ Implementation Logic (Hải ly về nhà ngủ khi đêm xuống & sinh sản).
+    - `Step 4.3.3`: Hands-on UE Editor Setup & Testing (Quản lý dân số và test chu kỳ ngày/đêm).
 - **Phase 5: Camera RTS, Game Speed & UI HUD**
-  - `Step 5.1`: RTS Camera Controller (Pan, Orbit, Zoom).
-  - `Step 5.2`: Game Speed Manager (Pause, 1x, 2x, 3x).
-  - `Step 5.3`: UI HUD (Hiển thị tài nguyên Gỗ, Dân số, Nút xây dựng).
-  - `Step 5.4`: [MỚI] Thiết Lập Toàn Diện UI HUD, Polish & Đóng Gói Hoàn Thiện Prototype Game.
+  - `Step 5.1`: RTS Camera Controller:
+    - `Step 5.1.1`: C++ Header (`ATimberRTSCamera`, Pan, Orbit, Zoom).
+    - `Step 5.1.2`: C++ Implementation Logic (Xử lý Input WASD, Q/E, Mouse Wheel).
+    - `Step 5.1.3`: Hands-on UE Editor Setup & Testing (Thiết lập Camera Rig Actor trên Level).
+  - `Step 5.2`: Game Speed Manager:
+    - `Step 5.2.1`: C++ Header (Time Dilation Manager).
+    - `Step 5.2.2`: C++ Implementation Logic (Pause, 1x, 2x, 3x).
+    - `Step 5.2.3`: Hands-on UE Editor Setup & Testing (Test phím tắt điều khiển thời gian).
+  - `Step 5.3`: Thiết Kế UI HUD Widget:
+    - `Step 5.3.1`: C++ Header (`UTimberHUDWidget`, Binding tài nguyên & nút xây).
+    - `Step 5.3.2`: C++ Implementation Logic (Cập nhật số Gỗ, Dân số, Trigger đặt móng).
+    - `Step 5.3.3`: Hands-on UE Editor Setup & Testing (Thiết kế Widget Blueprint UMG, hoàn thiện trọn vẹn Prototype).
