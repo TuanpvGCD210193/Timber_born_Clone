@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Timber_born_Clone/Public/Grid/TimberGridTypes.h"
+#include "Timber_born_Clone/Public/Pathfinding/TimberPathGraph.h"
 #include "TimberGridManager.generated.h"
 
 /**
@@ -166,6 +167,59 @@ public:
 
 	/** Cập nhật bộ đếm thời gian sinh trưởng của các gốc cây và mầm cây */
 	void AdvanceTreeGrowth(float DeltaTime);
+
+	// ==========================================
+	// PATH NETWORK CONFIG & ACTIONS (STEP 2.1)
+	// ==========================================
+
+	/** Đồ thị mạng lưới đường đi */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Timber|Pathfinding")
+	UTimberPathGraph* PathGraph;
+
+	/** Lát 1 ô đường đi (DirtPath) lên trên mặt đất và kết nối vào đồ thị đường */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Path Actions")
+	bool BuildPath(const FIntVector& Coord);
+
+	/** Phá dỡ 1 ô đường đi (DirtPath) và ngắt kết nối khỏi đồ thị đường */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Path Actions")
+	bool RemovePath(const FIntVector& Coord);
+
+	/** Kiểm tra tại ô lưới có đường đi không */
+	UFUNCTION(BlueprintPure, Category = "Timber|Path Actions")
+	bool HasPathAt(const FIntVector& Coord) const;
+
+	/** Tìm đường đi ngắn nhất giữa 2 điểm Start và Target bằng thuật toán A* 3D */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Pathfinding")
+	bool FindPath(const FIntVector& StartCoord, const FIntVector& TargetCoord, TArray<FIntVector>& OutPath, bool bRequirePathAtTarget = false) const;
+
+	/** Vẽ đường line trực quan hiển thị lộ trình tìm được trong Viewport */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Pathfinding")
+	void DrawDebugPath(const TArray<FIntVector>& Path, FColor LineColor = FColor::Green, float Duration = 10.0f);
+
+	// ==========================================
+	// DISTRICT NETWORK & BUILDING CONNECTIVITY (STEP 2.3)
+	// ==========================================
+
+	/** Tọa độ gốc của Nhà Chính (District Center) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|District")
+	FIntVector DistrictCenterCoord = FIntVector::ZeroValue;
+
+	/** Tọa độ ô cửa ra vào của Nhà Chính (Nơi bắt đầu tỏa ra mạng lưới đường đi) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|District")
+	FIntVector DistrictCenterDoorCoord = FIntVector::ZeroValue;
+
+	/**
+	 * Kiểm tra xem một công trình (thông qua tọa độ ô cửa của nó) có kết nối đường đi về District Center không
+	 * @param BuildingDoorCoord Tọa độ ô cửa công trình
+	 * @param OutPathDistance Khoảng cách số bước đường đi từ District Center tới công trình
+	 * @return true nếu công trình được kết nối thành công (sáng đèn hoạt động)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Timber|District")
+	bool IsBuildingConnectedToDistrict(const FIntVector& BuildingDoorCoord, int32& OutPathDistance) const;
+
+	/** Vẽ trực quan toàn bộ mạng lưới đường đi hợp lệ đang kết nối với District Center trong Viewport */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|District")
+	void DrawDebugDistrictNetwork();
 
 	// ==========================================
 	// PROCEDURAL TERRAIN & FOREST ACTIONS

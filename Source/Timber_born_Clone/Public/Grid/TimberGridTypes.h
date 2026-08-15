@@ -213,7 +213,7 @@ struct FForestClusterConfig
  * Cấu hình thời gian sinh trưởng và vòng đời của Cây Rừng (Step 1.4)
  */
 USTRUCT(BlueprintType)
-struct FTimber_born_Clone_API FTreeGrowthConfig
+struct TIMBER_BORN_CLONE_API FTreeGrowthConfig
 {
 	GENERATED_BODY()
 

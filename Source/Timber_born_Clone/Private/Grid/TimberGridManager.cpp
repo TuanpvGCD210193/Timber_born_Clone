@@ -1,6 +1,7 @@
 // Copyright Timberborn Clone Project. All Rights Reserved.
 
 #include "Timber_born_Clone/Public/Grid/TimberGridManager.h"
+#include "Timber_born_Clone/Public/Pathfinding/TimberAStar.h"
 #include "DrawDebugHelpers.h"
 
 #if WITH_EDITOR
@@ -155,6 +156,143 @@ void ATimberGridManager::AdvanceTreeGrowth(float DeltaTime)
 			}
 		}
 	}
+}
+
+bool ATimberGridManager::BuildPath(const FIntVector& Coord)
+{
+	if (!IsValidGridCoord(Coord))
+	{
+		return false;
+	}
+
+	// Đặt khối DirtPath lên ô lưới và hiển thị ISM tức thì
+	const bool bSuccess = SetBlock(Coord, ETimberBlockType::DirtPath, true);
+	if (bSuccess)
+	{
+		if (!PathGraph)
+		{
+			PathGraph = NewObject<UTimberPathGraph>(this, TEXT("TimberPathGraph"));
+		}
+
+		PathGraph->AddPathNode(Coord, this);
+		return true;
+	}
+
+	return false;
+}
+
+bool ATimberGridManager::RemovePath(const FIntVector& Coord)
+{
+	if (!IsValidGridCoord(Coord))
+	{
+		return false;
+	}
+
+	const int32 CellIdx = GetCellIndexFromVector(Coord);
+	if (GridCells[CellIdx].BlockType == ETimberBlockType::DirtPath)
+	{
+		ClearBlock(Coord);
+		if (PathGraph)
+		{
+			PathGraph->RemovePathNode(Coord);
+		}
+		return true;
+	}
+
+	return false;
+}
+
+bool ATimberGridManager::HasPathAt(const FIntVector& Coord) const
+{
+	if (!IsValidGridCoord(Coord))
+	{
+		return false;
+	}
+
+	const int32 CellIdx = GetCellIndexFromVector(Coord);
+	return (GridCells[CellIdx].BlockType == ETimberBlockType::DirtPath);
+}
+
+bool ATimberGridManager::FindPath(
+	const FIntVector& StartCoord, 
+	const FIntVector& TargetCoord, 
+	TArray<FIntVector>& OutPath, 
+	bool bRequirePathAtTarget) const
+{
+	return UTimberAStar::FindPath(this, StartCoord, TargetCoord, OutPath, bRequirePathAtTarget);
+}
+
+void ATimberGridManager::DrawDebugPath(const TArray<FIntVector>& Path, FColor LineColor, float Duration)
+{
+#if WITH_EDITOR
+	const UWorld* World = GetWorld();
+	if (!World || Path.Num() == 0)
+	{
+		return;
+	}
+
+	for (int32 i = 0; i < Path.Num(); ++i)
+	{
+		const FVector NodePos = GridCoordToWorldLocation(Path[i], true) + FVector(0, 0, 20.0f);
+		
+		// Vẽ điểm nút hình hộp
+		DrawDebugBox(World, NodePos, FVector(15.0f, 15.0f, 15.0f), LineColor, false, Duration, 0, 2.0f);
+
+		// Nối đường line tới nút tiếp theo
+		if (i < Path.Num() - 1)
+		{
+			const FVector NextPos = GridCoordToWorldLocation(Path[i + 1], true) + FVector(0, 0, 20.0f);
+			DrawDebugLine(World, NodePos, NextPos, LineColor, false, Duration, 0, 4.0f);
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("ATimberGridManager: Đã vẽ Debug Path gồm %d bước trong Viewport."), Path.Num());
+#endif
+}
+
+bool ATimberGridManager::IsBuildingConnectedToDistrict(const FIntVector& BuildingDoorCoord, int32& OutPathDistance) const
+{
+	OutPathDistance = 0;
+
+	if (!PathGraph)
+	{
+		return false;
+	}
+
+	return PathGraph->IsReachable(DistrictCenterDoorCoord, BuildingDoorCoord, OutPathDistance);
+}
+
+void ATimberGridManager::DrawDebugDistrictNetwork()
+{
+#if WITH_EDITOR
+	const UWorld* World = GetWorld();
+	if (!World || !PathGraph)
+	{
+		return;
+	}
+
+	const TArray<FIntVector> ReachableNodes = PathGraph->GetAllReachableNodes(DistrictCenterDoorCoord);
+
+	for (const FIntVector& NodeCoord : ReachableNodes)
+	{
+		const FVector NodePos = GridCoordToWorldLocation(NodeCoord, true) + FVector(0, 0, 25.0f);
+		DrawDebugBox(World, NodePos, FVector(20.0f, 20.0f, 5.0f), FColor::Cyan, false, 10.0f, 0, 2.0f);
+
+		// Nối đường line tới các láng giềng đã kết nối
+		const TArray<FIntVector> Neighbors = PathGraph->GetConnectedNeighbors(NodeCoord);
+		for (const FIntVector& NeighborCoord : Neighbors)
+		{
+			const FVector NeighborPos = GridCoordToWorldLocation(NeighborCoord, true) + FVector(0, 0, 25.0f);
+			DrawDebugLine(World, NodePos, NeighborPos, FColor::Yellow, false, 10.0f, 0, 3.0f);
+		}
+	}
+
+	// Đánh dấu ô cửa District Center bằng hộp phát sáng màu Magenta
+	const FVector DoorWorldPos = GridCoordToWorldLocation(DistrictCenterDoorCoord, true) + FVector(0, 0, 35.0f);
+	DrawDebugBox(World, DoorWorldPos, FVector(25.0f, 25.0f, 25.0f), FColor::Magenta, false, 10.0f, 0, 4.0f);
+
+	UE_LOG(LogTemp, Log, TEXT("ATimberGridManager: Đã vẽ mạng lưới District Network gồm %d nút đường hợp lệ kết nối về District Center."), ReachableNodes.Num());
+#endif
 }
 
 FVector ATimberGridManager::GridCoordToWorldLocation(const FIntVector& Coord, bool bCenterOffset) const
@@ -435,7 +573,13 @@ void ATimberGridManager::ClearAllInstances()
 	// 2. Làm sạch từ điển tham chiếu
 	BlockISMMap.Empty();
 
-	// 3. Reset toàn bộ dữ liệu ô lưới
+	// 3. Làm sạch đồ thị đường đi
+	if (PathGraph)
+	{
+		PathGraph->ClearAllNodes();
+	}
+
+	// 4. Reset toàn bộ dữ liệu ô lưới
 	for (FTimberCell& Cell : GridCells)
 	{
 		Cell.BlockType = ETimberBlockType::None;
@@ -799,6 +943,24 @@ void ATimberGridManager::LoadTerrainData()
 			{
 				GridCells[Batch.CellIndices[i]].InstanceIndex = StartIdx + i;
 			}
+		}
+	}
+
+	// Đồng bộ lại các điểm đường đi vào PathGraph
+	if (PathGraph)
+	{
+		PathGraph->ClearAllNodes();
+	}
+	else
+	{
+		PathGraph = NewObject<UTimberPathGraph>(this, TEXT("TimberPathGraph"));
+	}
+
+	for (const FTimberCell& Cell : GridCells)
+	{
+		if (Cell.BlockType == ETimberBlockType::DirtPath)
+		{
+			PathGraph->AddPathNode(Cell.GridCoord, this);
 		}
 	}
 
