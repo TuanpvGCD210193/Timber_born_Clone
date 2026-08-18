@@ -42,7 +42,7 @@ class TIMBER_BORN_CLONE_API UTimberAStar : public UObject
 
 public:
 	/**
-	 * Thuật toán A* tìm đường đi ngắn nhất giữa 2 điểm trên lưới 3D
+	 * Thuật toán A* tìm đường đi ngắn nhất giữa 2 điểm trên lưới không gian 3D
 	 * @param GridManager Con trỏ tới Grid Manager
 	 * @param StartCoord Tọa độ điểm bắt đầu
 	 * @param TargetCoord Tọa độ điểm đích

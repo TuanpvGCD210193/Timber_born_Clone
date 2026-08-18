@@ -2,6 +2,8 @@
 
 #include "Timber_born_Clone/Public/Grid/TimberGridManager.h"
 #include "Timber_born_Clone/Public/Pathfinding/TimberAStar.h"
+#include "Timber_born_Clone/Public/Buildings/TimberBuildingBase.h"
+#include "Timber_born_Clone/Public/Buildings/TimberDistrictCenter.h"
 #include "DrawDebugHelpers.h"
 
 #if WITH_EDITOR
@@ -165,6 +167,24 @@ bool ATimberGridManager::BuildPath(const FIntVector& Coord)
 		return false;
 	}
 
+	// Không cho phép lát đường đè lên ô có Cây (Quy tắc Phương án 2)
+	const int32 CellIdx = GetCellIndexFromVector(Coord);
+	const ETimberBlockType ExistingType = GridCells[CellIdx].BlockType;
+	if (ExistingType == ETimberBlockType::TreeMature ||
+		ExistingType == ETimberBlockType::TreeSapling ||
+		ExistingType == ETimberBlockType::TreeStump ||
+		ExistingType == ETimberBlockType::Water ||
+		ExistingType == ETimberBlockType::DirtPath)
+	{
+		return false;
+	}
+
+	// Không cho phép lát đường đè lên công trình
+	if (GetBuildingAt(Coord) != nullptr)
+	{
+		return false;
+	}
+
 	// Đặt khối DirtPath lên ô lưới và hiển thị ISM tức thì
 	const bool bSuccess = SetBlock(Coord, ETimberBlockType::DirtPath, true);
 	if (bSuccess)
@@ -175,6 +195,7 @@ bool ATimberGridManager::BuildPath(const FIntVector& Coord)
 		}
 
 		PathGraph->AddPathNode(Coord, this);
+		UpdateAllBuildingsConnectionStatus();
 		return true;
 	}
 
@@ -196,6 +217,7 @@ bool ATimberGridManager::RemovePath(const FIntVector& Coord)
 		{
 			PathGraph->RemovePathNode(Coord);
 		}
+		UpdateAllBuildingsConnectionStatus();
 		return true;
 	}
 
@@ -297,21 +319,21 @@ void ATimberGridManager::DrawDebugDistrictNetwork()
 
 FVector ATimberGridManager::GridCoordToWorldLocation(const FIntVector& Coord, bool bCenterOffset) const
 {
-	const FVector ActorOrigin = GetActorLocation();
 	const FVector Offset = bCenterOffset 
 		? FVector(CellSize * 0.5f, CellSize * 0.5f, CellSize * 0.5f) 
 		: FVector::ZeroVector;
 
-	return ActorOrigin + FVector(Coord.X * CellSize, Coord.Y * CellSize, Coord.Z * CellSize) + Offset;
+	const FVector LocalPos = FVector(Coord.X * CellSize, Coord.Y * CellSize, Coord.Z * CellSize) + Offset;
+	return GetActorTransform().TransformPosition(LocalPos);
 }
 
 FIntVector ATimberGridManager::WorldLocationToGridCoord(const FVector& WorldLocation) const
 {
-	const FVector RelativePos = WorldLocation - GetActorLocation();
+	const FVector LocalPos = GetActorTransform().InverseTransformPosition(WorldLocation);
 
-	const int32 X = FMath::FloorToInt(RelativePos.X / CellSize);
-	const int32 Y = FMath::FloorToInt(RelativePos.Y / CellSize);
-	const int32 Z = FMath::FloorToInt(RelativePos.Z / CellSize);
+	const int32 X = FMath::FloorToInt(LocalPos.X / CellSize);
+	const int32 Y = FMath::FloorToInt(LocalPos.Y / CellSize);
+	const int32 Z = FMath::FloorToInt(LocalPos.Z / CellSize);
 
 	return FIntVector(X, Y, Z);
 }
@@ -444,6 +466,19 @@ UInstancedStaticMeshComponent* ATimberGridManager::GetOrCreateISMComponent(ETimb
 		}
 	}
 
+	// Fallback an toàn: Nếu ISM chưa có StaticMesh thì mượn từ bất kỳ ISM nào khác (vd Dirt / Grass)
+	if (NewISM->GetStaticMesh() == nullptr)
+	{
+		for (const auto& Pair : BlockISMMap)
+		{
+			if (Pair.Value && Pair.Value->GetStaticMesh())
+			{
+				NewISM->SetStaticMesh(Pair.Value->GetStaticMesh());
+				break;
+			}
+		}
+	}
+
 	BlockISMMap.Add(BlockType, NewISM);
 	return NewISM;
 }
@@ -489,7 +524,20 @@ bool ATimberGridManager::SetBlock(const FIntVector& Coord, ETimberBlockType NewT
 			MeshScale = Config->MeshScale;
 		}
 
-		// Tính toán vị trí tâm ô
+		// Tự động ép dẹt và dán sát mặt đất cho DirtPath nếu chưa thiết lập offset
+		if (NewType == ETimberBlockType::DirtPath)
+		{
+			if (MeshOffset.IsZero())
+			{
+				MeshOffset = FVector(0.0f, 0.0f, -45.0f);
+			}
+			if (MeshScale == FVector(1.0f))
+			{
+				MeshScale = FVector(1.0f, 1.0f, 0.10f);
+			}
+		}
+
+		// Tính toán vị trí tâm ô (World Space)
 		const FVector WorldLocation = GridCoordToWorldLocation(Coord, true) + MeshOffset;
 		const FTransform InstanceTransform(FRotator::ZeroRotator, WorldLocation, MeshScale);
 
@@ -517,35 +565,95 @@ bool ATimberGridManager::ClearBlock(const FIntVector& Coord)
 	}
 
 	const ETimberBlockType OldType = GridCells[CellIdx].BlockType;
-	const int32 OldInstIdx = GridCells[CellIdx].InstanceIndex;
 
-	if (OldType != ETimberBlockType::None && OldInstIdx != INDEX_NONE)
+	if (OldType != ETimberBlockType::None)
 	{
 		if (TObjectPtr<UInstancedStaticMeshComponent>* ISMPtr = BlockISMMap.Find(OldType))
 		{
 			UInstancedStaticMeshComponent* ISM = *ISMPtr;
-			if (ISM && ISM->IsValidInstance(OldInstIdx))
+			if (ISM && IsValid(ISM) && ISM->GetInstanceCount() > 0)
 			{
-				const int32 LastIndex = ISM->GetInstanceCount() - 1;
-				ISM->RemoveInstance(OldInstIdx);
-
-				// ISM RemoveInstance thực hiện Swap với phần tử cuối cùng!
-				// Cần cập nhật lại InstanceIndex của ô đang giữ LastIndex
-				if (OldInstIdx != LastIndex)
+				// Tính toán vị trí tâm không gian 3D kỳ vọng của Mesh tại ô này
+				FVector MeshOffset = FVector::ZeroVector;
+				if (const FTimberBlockMeshConfig* Config = BlockMeshConfigs.Find(OldType))
 				{
-					for (FTimberCell& Cell : GridCells)
+					MeshOffset = Config->MeshOffset;
+				}
+				if (OldType == ETimberBlockType::DirtPath && MeshOffset.IsZero())
+				{
+					MeshOffset = FVector(0.0f, 0.0f, -45.0f);
+				}
+
+				const FVector ExpectedWorldPos = GridCoordToWorldLocation(Coord, true) + MeshOffset;
+
+				// TÌM CHÍNH XÁC INSTANCE THEO VỊ TRÍ KHÔNG GIAN 3D THỰC TẾ (Không dựa vào InstanceIndex dễ lệch)
+				int32 TargetInstIdx = INDEX_NONE;
+				float BestDistSq = 2500.0f; // Bán kính tìm kiếm tối đa 50cm
+
+				// 1. Thử kiểm tra trước chỉ số InstanceIndex đã lưu
+				const int32 CachedIdx = GridCells[CellIdx].InstanceIndex;
+				if (ISM->IsValidInstance(CachedIdx))
+				{
+					FTransform CachedTransform;
+					if (ISM->GetInstanceTransform(CachedIdx, CachedTransform, true))
 					{
-						if (Cell.BlockType == OldType && Cell.InstanceIndex == LastIndex)
+						if (FVector::DistSquared(CachedTransform.GetLocation(), ExpectedWorldPos) < 100.0f)
 						{
-							Cell.InstanceIndex = OldInstIdx;
-							break;
+							TargetInstIdx = CachedIdx;
 						}
+					}
+				}
+
+				// 2. Nếu không khớp, quét toàn bộ Instance để tìm đúng mesh tại tọa độ đó
+				if (TargetInstIdx == INDEX_NONE)
+				{
+					const int32 TotalInstances = ISM->GetInstanceCount();
+					for (int32 i = 0; i < TotalInstances; ++i)
+					{
+						FTransform InstTransform;
+						if (ISM->GetInstanceTransform(i, InstTransform, true))
+						{
+							const float DistSq = FVector::DistSquared(InstTransform.GetLocation(), ExpectedWorldPos);
+							if (DistSq < BestDistSq)
+							{
+								BestDistSq = DistSq;
+								TargetInstIdx = i;
+							}
+						}
+					}
+				}
+
+				// 3. Thực hiện xóa Instance chuẩn xác
+				if (TargetInstIdx != INDEX_NONE && ISM->IsValidInstance(TargetInstIdx))
+				{
+					const int32 LastIndex = ISM->GetInstanceCount() - 1;
+					const bool bRemoved = ISM->RemoveInstance(TargetInstIdx);
+
+					if (bRemoved)
+					{
+						// Nếu xóa một phần tử ở giữa, phần tử cuối cùng (LastIndex) bị swap vào vị trí TargetInstIdx
+						// Cần tìm ô nào đang sở hữu LastIndex để cập nhật lại chỉ số mới
+						if (TargetInstIdx != LastIndex)
+						{
+							for (FTimberCell& Cell : GridCells)
+							{
+								if (Cell.BlockType == OldType && Cell.InstanceIndex == LastIndex)
+								{
+									Cell.InstanceIndex = TargetInstIdx;
+									break;
+								}
+							}
+						}
+
+						// Bắt buộc GPU cập nhật render state ngay lập tức
+						ISM->MarkRenderStateDirty();
 					}
 				}
 			}
 		}
 	}
 
+	// Đặt lại dữ liệu ô lưới về rỗng (None / Air)
 	GridCells[CellIdx].BlockType = ETimberBlockType::None;
 	GridCells[CellIdx].bIsWalkable = false;
 	GridCells[CellIdx].InstanceIndex = INDEX_NONE;
@@ -976,21 +1084,213 @@ void ATimberGridManager::DrawDebugGridBounds()
 		return;
 	}
 
-	const FVector Origin = GetActorLocation();
 	const FVector Extents = FVector(
 		(GridSizeX * CellSize) * 0.5f,
 		(GridSizeY * CellSize) * 0.5f,
 		(GridSizeZ * CellSize) * 0.5f
 	);
-	const FVector Center = Origin + Extents;
+	const FVector Center = GetActorTransform().TransformPosition(Extents);
+	const FQuat Rotation = GetActorTransform().GetRotation();
 
-	// Vẽ hộp bao quanh toàn bộ bản đồ
-	DrawDebugBox(World, Center, Extents, FColor::Cyan, false, 5.0f, 0, 4.0f);
+	// Vẽ hộp bao quanh toàn bộ bản đồ theo góc xoay của Actor
+	DrawDebugBox(World, Center, Extents, Rotation, FColor::Cyan, false, 15.0f, 0, 4.0f);
 
 	// In thông tin debug
-	const FString DebugMsg = FString::Printf(TEXT("Grid Dimensions: [%d x %d x %d] | Total Cells: %d"), 
-		GridSizeX, GridSizeY, GridSizeZ, (GridSizeX * GridSizeY * GridSizeZ));
+	const FString DebugMsg = FString::Printf(TEXT("Grid Dimensions: [%d x %d x %d] | CellSize: %.0f | Total: %d cells"), 
+		GridSizeX, GridSizeY, GridSizeZ, CellSize, (GridSizeX * GridSizeY * GridSizeZ));
 	
-	DrawDebugString(World, Center + FVector(0, 0, Extents.Z + 50.0f), DebugMsg, nullptr, FColor::White, 5.0f, true, 1.2f);
+	DrawDebugString(World, Center + FVector(0, 0, Extents.Z + 50.0f), DebugMsg, nullptr, FColor::White, 15.0f, true, 1.3f);
 #endif
 }
+
+void ATimberGridManager::DrawDebugCellCoordinates()
+{
+#if WITH_EDITOR
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// Quét qua các cột cách quãng để hiển thị chữ số độ cao (X, Y, Z_top) trực quan trên bề mặt đất
+	for (int32 Y = 0; Y < GridSizeY; Y += 4)
+	{
+		for (int32 X = 0; X < GridSizeX; X += 4)
+		{
+			FIntVector TopCoord;
+			if (GetTopSolidGridCoordAt(X, Y, TopCoord))
+			{
+				const FVector SurfaceWorldPos = GridCoordToWorldLocation(FIntVector(X, Y, TopCoord.Z + 1), true);
+				const FString CoordText = FString::Printf(TEXT("[%d,%d]\nZ=%d"), X, Y, TopCoord.Z);
+				DrawDebugString(World, SurfaceWorldPos + FVector(0, 0, 30.0f), CoordText, nullptr, FColor::Yellow, 15.0f, false, 1.1f);
+				DrawDebugPoint(World, SurfaceWorldPos, 10.0f, FColor::Green, false, 15.0f);
+			}
+		}
+	}
+#endif
+}
+
+bool ATimberGridManager::GetTopSolidGridCoordAt(int32 X, int32 Y, FIntVector& OutTopCoord) const
+{
+	if (X < 0 || X >= GridSizeX || Y < 0 || Y >= GridSizeY)
+	{
+		return false;
+	}
+
+	for (int32 Z = GridSizeZ - 1; Z >= 0; --Z)
+	{
+		const int32 CellIdx = GetCellIndex(X, Y, Z);
+		if (GridCells.IsValidIndex(CellIdx))
+		{
+			const ETimberBlockType Type = GridCells[CellIdx].BlockType;
+			if (Type == ETimberBlockType::Dirt || Type == ETimberBlockType::Grass || Type == ETimberBlockType::Cliff)
+			{
+				OutTopCoord = FIntVector(X, Y, Z);
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+bool ATimberGridManager::IsCellEmptyForBuilding(const FIntVector& Coord) const
+{
+	if (!IsValidGridCoord(Coord))
+	{
+		return false;
+	}
+
+	const int32 CellIdx = GetCellIndexFromVector(Coord);
+	const ETimberBlockType Type = GridCells[CellIdx].BlockType;
+
+	// Không được có cây, không được là vách đá dốc, không được có nước
+	if (Type == ETimberBlockType::TreeMature ||
+		Type == ETimberBlockType::TreeSapling ||
+		Type == ETimberBlockType::TreeStump ||
+		Type == ETimberBlockType::Water)
+	{
+		return false;
+	}
+
+	// Không được có công trình khác đè lên
+	if (GetBuildingAt(Coord) != nullptr)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+ATimberBuildingBase* ATimberGridManager::GetBuildingAt(const FIntVector& Coord) const
+{
+	for (const TObjectPtr<ATimberBuildingBase>& BuildingPtr : RegisteredBuildings)
+	{
+		if (IsValid(BuildingPtr))
+		{
+			if (BuildingPtr->GetOccupiedGridCoords().Contains(Coord))
+			{
+				return BuildingPtr.Get();
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+void ATimberGridManager::RegisterBuilding(ATimberBuildingBase* Building)
+{
+	if (Building && !RegisteredBuildings.Contains(Building))
+	{
+		RegisteredBuildings.Add(Building);
+
+		// Nếu là District Center, cập nhật ngay tọa độ cửa làm gốc phát tỏa mạng lưới
+		if (ATimberDistrictCenter* DC = Cast<ATimberDistrictCenter>(Building))
+		{
+			DistrictCenterDoorCoord = DC->GetDoorGridCoord();
+			DistrictCenterCoord = DC->OriginGridCoord;
+			UE_LOG(LogTemp, Log, TEXT("ATimberGridManager: Đã ghi nhận Nhà Chính tại (%d, %d, %d), Cửa tại (%d, %d, %d)."),
+				DistrictCenterCoord.X, DistrictCenterCoord.Y, DistrictCenterCoord.Z,
+				DistrictCenterDoorCoord.X, DistrictCenterDoorCoord.Y, DistrictCenterDoorCoord.Z);
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("ATimberGridManager: Đã đăng ký công trình [%s] tại (%d, %d, %d)."),
+			*Building->BuildingName, Building->OriginGridCoord.X, Building->OriginGridCoord.Y, Building->OriginGridCoord.Z);
+
+		UpdateAllBuildingsConnectionStatus();
+	}
+}
+
+void ATimberGridManager::UnregisterBuilding(ATimberBuildingBase* Building)
+{
+	if (Building)
+	{
+		RegisteredBuildings.Remove(Building);
+		UE_LOG(LogTemp, Log, TEXT("ATimberGridManager: Đã hủy đăng ký công trình [%s]."), *Building->BuildingName);
+
+		UpdateAllBuildingsConnectionStatus();
+	}
+}
+
+void ATimberGridManager::UpdateAllBuildingsConnectionStatus()
+{
+	if (!PathGraph)
+	{
+		return;
+	}
+
+	// 1. Dọn dẹp các con trỏ rỗng / không hợp lệ trong danh sách đăng ký
+	RegisteredBuildings.RemoveAll([](const TObjectPtr<ATimberBuildingBase>& BuildingPtr) {
+		return !BuildingPtr || !IsValid(BuildingPtr);
+	});
+
+	// 2. Tìm District Center trong danh sách RegisteredBuildings
+	ATimberDistrictCenter* DistrictCenterActor = nullptr;
+	for (const TObjectPtr<ATimberBuildingBase>& BuildingPtr : RegisteredBuildings)
+	{
+		if (BuildingPtr && BuildingPtr->IsA<ATimberDistrictCenter>())
+		{
+			DistrictCenterActor = Cast<ATimberDistrictCenter>(BuildingPtr.Get());
+			break;
+		}
+	}
+
+	// 3. Lấy tọa độ ô cửa của Nhà Chính (Nơi bắt đầu phát tỏa đường đi)
+	FIntVector DCDoorCoord = DistrictCenterDoorCoord;
+	if (DistrictCenterActor)
+	{
+		DCDoorCoord = DistrictCenterActor->GetDoorGridCoord();
+	}
+
+	const bool bHasPathAtDCDoor = HasPathAt(DCDoorCoord) || HasPathAt(FIntVector(DCDoorCoord.X, DCDoorCoord.Y, DCDoorCoord.Z + 1));
+	const FIntVector ActualDCDoorRoad = HasPathAt(DCDoorCoord) ? DCDoorCoord : FIntVector(DCDoorCoord.X, DCDoorCoord.Y, DCDoorCoord.Z + 1);
+
+	// 4. Cập nhật trạng thái kết nối cho từng công trình
+	for (const TObjectPtr<ATimberBuildingBase>& BuildingPtr : RegisteredBuildings)
+	{
+		// Nhà Chính luôn luôn là cội nguồn (bConnected = true)
+		if (BuildingPtr->IsA<ATimberDistrictCenter>())
+		{
+			BuildingPtr->UpdateDistrictConnectionVisuals(true);
+			continue;
+		}
+
+		// LẤY CHÍNH XÁC Ô CỬA RA VÀO CỦA CÔNG TRÌNH MỤC TIÊU
+		const FIntVector TargetDoorCoord = BuildingPtr->GetDoorGridCoord();
+		const bool bHasPathAtTargetDoor = HasPathAt(TargetDoorCoord) || HasPathAt(FIntVector(TargetDoorCoord.X, TargetDoorCoord.Y, TargetDoorCoord.Z + 1));
+		const FIntVector ActualTargetDoorRoad = HasPathAt(TargetDoorCoord) ? TargetDoorCoord : FIntVector(TargetDoorCoord.X, TargetDoorCoord.Y, TargetDoorCoord.Z + 1);
+
+		bool bConnected = false;
+		if (bHasPathAtDCDoor && bHasPathAtTargetDoor)
+		{
+			int32 OutDist = 0;
+			if (PathGraph->IsReachable(ActualDCDoorRoad, ActualTargetDoorRoad, OutDist))
+			{
+				bConnected = true;
+			}
+		}
+
+		BuildingPtr->UpdateDistrictConnectionVisuals(bConnected);
+	}
+}
+

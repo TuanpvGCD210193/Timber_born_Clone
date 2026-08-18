@@ -44,6 +44,44 @@
 * **`District Center Door Coord`**: Tọa độ ô cửa ra vào của Nhà Chính (mặc định: `X=10, Y=10, Z=2`), là gốc phát tỏa mạng lưới giao thông.
 * **`DrawDebugDistrictNetwork`**: Nút bấm CallInEditor để hiển thị dải mạng lưới đường đi phát sáng (Magenta = Cửa, Cyan = Đường, Vàng = Liên kết) trong Viewport.
 
+### D. Nhóm **Building Base & Construction (Công Trình & Móng Xây Dựng - Phase 3)**
+* **`Building Name` (`FString`)**: Tên định danh của công trình (vd: `"District Center"`, `"Wood Storage"`, `"Lumberjack Flag"`).
+* **`Building State` (`EBuildingState`)**: Trạng thái vòng đời (`Ghost_Valid`, `Ghost_Invalid`, `UnderConstruction`, `Completed`).
+* **`Footprint Size` (`FIntPoint`)**: Kích thước chiếm ô lưới theo chiều ngang $(X, Y)$ (vd: `1, 1` cho Trại đốn gỗ; `2, 2` cho Nhà chính & Kho).
+* **`bCanBeDemolished` (`bool`)**: Quyền hạn cho phép tháo dỡ (`true`: Cho phép xóa; `false` cho Nhà chính: Khóa bảo vệ `⛔ PROTECTED`).
+* **`Origin Grid Coord` (`FIntVector`)**: Tọa độ ô lưới gốc (Góc dưới bên trái của công trình trên bản đồ).
+* **`Door Relative Coord` (`FIntVector`)**: Tọa độ tương đối của ô cửa tính từ ô gốc (vd: `0, 1, 0`).
+* **`Wood Cost` (`int32`)**: Chi phí gỗ để thi công móng (`0` cho Nhà chính, `10` cho Kho, `3` cho Trại đốn gỗ).
+* **`Current Wood Delivered` (`int32`)**: Lượng gỗ thực tế đã được hải ly vác tới móng.
+* **`Build Progress` (`float`)**: Tiến độ thi công gõ búa ($0.0 \rightarrow 1.0$). Đạt $1.0$ ($100\%$) tự động hoàn thiện nhà.
+* **`bIsConnectedToDistrict` (`bool`)**: Cờ báo hiệu công trình đã có đường nối thông suốt về Cửa Nhà Chính.
+* **`bIsHologramPreview` (`bool`)**: Đánh dấu Actor chỉ là bóng mờ xem trước (không tự ý đăng ký vào Grid).
+
+### E. Nhóm **Building Materials (Vật Liệu Công Trình - Phase 3)**
+* **`Ghost Valid Material`**: Material Hologram Xanh trong suốt phát sáng (`M_Hologram_Valid`).
+* **`Ghost Invalid Material`**: Material Hologram Đỏ trong suốt phát sáng (`M_Hologram_Invalid`).
+* **`Scaffold Material`**: Material giàn giáo móng dẹp phẳng (`M_Scaffold`).
+* **`Finished Material`**: Material mô hình hoàn thiện đầy đủ (`M_Finished`).
+
+### F. Nhóm **Specialized Buildings (Thông Số Riêng Cho Từng Nhà - Phase 3)**
+* **`BP_DistrictCenter` (Nhà Chính)**:
+  * `Max Wood Storage` (= 50): Sức chứa kho gỗ khởi nghiệp.
+  * `Current Wood Stock` (= 20): Lượng gỗ có sẵn ban đầu.
+  * `bCanBeDemolished` (= false): Khóa bảo vệ vĩnh viễn không thể phá hủy.
+* **`BP_Storage` (Kho Gỗ)**:
+  * `Max Capacity` (= 100): Sức chứa tối đa của kho lớn.
+  * `Current Stock` (= 0): Lượng gỗ hiện đang lưu trữ.
+* **`BP_LumberjackFlag` (Trại Đốn Gỗ)**:
+  * `Work Radius` (= 10): Bán kính quét tìm cây trưởng thành (số ô).
+  * `Max Workers` (= 1): Số lượng thợ đốn gỗ làm việc.
+  * `Inventory Capacity` (= 2): Sức chứa tạm thời trước khi chuyển về kho.
+
+### G. Nhóm **Player Controller & Brush HUD (Công Cụ Cọ Vẽ & Phá Hủy - Phase 3)**
+* **`Current Brush Mode` (`ETimberBrushMode`)**: Chế độ cọ vẽ chuột (`None`, `PaintPath`, `Demolish`, `PlaceBuilding`).
+* **`Selected Building Class`**: Class Blueprint công trình đang chọn xây (`BP_DistrictCenter`, `BP_Storage`, `BP_LumberjackFlag`).
+* **`Build HUD Widget Class`**: Class Widget giao diện 5 nút ở đáy màn hình (`WBP_SimpleBuildHUD`).
+* **`Building Rotation Angle` (= 0.0)**: Góc xoay hiện tại ($0^\circ, 90^\circ, 180^\circ, 270^\circ$). Bấm phím `R` để xoay $+90^\circ$.
+
 ---
 
 ## 🌍 2. BẢNG THÔNG SỐ & CƠ CHẾ ĐỊA HÌNH & TÀI NGUYÊN (TERRAIN & RESOURCES)
@@ -214,6 +252,32 @@ Mục này cung cấp tài liệu kỹ thuật chuyên sâu và các nguyên lý
 
 ---
 
+### 🌟 C. TỔNG KẾT PHASE 3: HỆ THỐNG CÔNG TRÌNH, MÓNG XÂY DỰNG, CÔNG CỤ CỌ VẼ & KẾT NỐI MẠNG LƯỚI (HOÀN THÀNH 100%)
+
+#### 1. Kiến Trúc Vòng Đời Công Trình & Cơ Chế Móng (Building State Machine & Construction Lifecycle)
+* **Máy Trạng Thái Hữu Hạn (`EBuildingState`)**:
+  - `Ghost_Valid` / `Ghost_Invalid`: Hologram xem trước khi hover chuột (xanh/đỏ), không va chạm, không đăng ký vào Grid.
+  - `UnderConstruction`: Trạng thái móng giàn giáo, tự động kích hoạt giàn giáo `ScaffoldMeshComponent` dẹp phẳng 20cm khớp theo $N \times M$ Footprint và vẽ khung dây Wireframe vàng bảo vệ.
+  - `Completed`: Công trình hoàn thiện 100%, kích hoạt mesh đầy đủ và tham gia vào mạng lưới kinh tế/sản xuất.
+* **Tối Ưu & Dọn Dẹp Codebase (Refactor Clean Code)**:
+  - Trích xuất hàm `CalcDoorArrowLocalOffset()` dùng chung cho tất cả các trạng thái tính vị trí mũi tên cửa.
+  - Sử dụng cờ `bIsHologramPreview` để loại bỏ hoàn toàn việc đăng ký/hủy đăng ký thừa khi xem trước móng.
+  - Cache `CachedGridManager` dạng `TWeakObjectPtr` tránh gọi quét `GetActorOfClass` lặp đi lặp lại.
+
+#### 2. Quy Tắc Kết Nối Đồ Thị Đường Đi Chuẩn Xác Ô Cửa (Exact Door Adjacency & Reachability)
+* **Kết Nối Bắt Buộc Qua Ô Cửa (`GetDoorGridCoord`)**:
+  - Triệt tiêu việc nhận đường bừa bãi ở 4 cạnh chu vi xung quanh móng. Chỉ khi đường đất (`DirtPath`) chạm **đúng tọa độ ô cửa** (nơi có Mũi Tên chỉ ra) và nối thông suốt về Cửa Nhà Chính (`DistrictCenter`) thì công trình mới được công nhận là `bIsConnectedToDistrict = true` và tắt Billboard cảnh báo `NO ROAD`.
+  - Mũi tên 3D của cửa tự động xoay chuẩn xác theo phím `R` ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) và tự động ẩn đi khi đã có đường lát đè lên ô cửa.
+
+#### 3. Công Cụ Cọ Vẽ Đa Năng, Cơ Chế An Toàn & Đồng Bộ GPU ISM Khi Xóa (Demolish Safety & Spatial Instance Match)
+* **Cơ Chế Bảo Vệ Công Trình Đặc Biệt**:
+  - Gán cờ `bCanBeDemolished = false` cho Nhà Chính (`District Center`). Khi hover chuột vào sẽ hiện viền Cam `⛔ PROTECTED` và từ chối xóa, chống tai nạn mất căn cứ đầu não.
+  - Phân tách an toàn: Cho phép kéo đè chuột (Drag) để xóa dải đường liên tục, nhưng bắt buộc phải **Click có chủ đích** khi muốn tháo dỡ công trình.
+* **Thuật Toán Tìm Instance Theo Tọa Độ Không Gian 3D Thực Tế (World Transform Match)**:
+  - Khắc phục triệt để lỗi "Swap with Last" của Unreal Engine ISM khi xóa: Trước khi gọi `RemoveInstance`, hệ thống đối chiếu tọa độ thế giới 3D thực tế của Instance để xóa **chính xác 100% đúng ô người chơi vừa click**, đồng thời gọi `MarkRenderStateDirty()` để GPU làm mới mesh tức thì.
+
+---
+
 ## 📋 5. LỘ TRÌNH TRIỂN KHAI MICRO-STEPS (ROADMAP)
 
 - **Phase 1: Địa hình Grid, Rừng cây & Khối Cơ Bản [HOÀN THÀNH 100%]**
@@ -232,25 +296,31 @@ Mục này cung cấp tài liệu kỹ thuật chuyên sâu và các nguyên lý
   - `Step 2.3`: [XONG] Hệ thống Kết Nối Đường Đi & Mạng Lưới Công Trình (District Reachability BFS).
   - `Step 2.4`: [XONG] Thiết Lập UE Editor, Tạo Mesh/Material Đường Đi & Visual Testing Trên Viewport.
   - `Phase 2 Retrospective`: [XONG] Tổng kết Mã nguồn, Đồ thị Mạng lưới & Thuật toán A* Pathfinding.
-- **Phase 3: Hệ Thống 3 Công Trình & Cơ Chế Móng Xây Dựng (Construction Site) [TIẾP THEO]**
-  - `Step 3.1`: Base Building Actor & Construction Site System [HOÀN THÀNH 100%]:
-    - `Step 3.1.1`: [XONG] C++ Header & Architecture (Khai báo `EBuildingState`, `ATimberBuildingBase`, Footprint, Door Coord, Wood Cost, Hologram & Mesh Components).
+- **Phase 3: Hệ Thống 3 Công Trình, Móng Xây Dựng & HUD Cọ Vẽ Tương Tác Chuột [HOÀN THÀNH 100%]**
+  - `Step 3.1`: Base Building Actor & Construction Site System [XONG]:
+    - `Step 3.1.1`: [XONG] C++ Header & Architecture (`EBuildingState`, `ATimberBuildingBase`, Footprint, Door Coord, Wood Cost, Hologram & Mesh Components).
     - `Step 3.1.2`: [XONG] C++ Implementation Logic & Live In-Editor Sync (Máy trạng thái `SetBuildingState`, `DeliverWood`, `OnConstruction`, `PostEditChangeProperty`).
     - `Step 3.1.3`: [XONG] Hands-on UE Editor Setup (Tạo Material `M_Hologram_Valid`, `M_Hologram_Invalid`, `M_Scaffold`, tạo Blueprint `BP_BuildingBaseTest`).
     - `Step 3.1.4`: [XONG] Hands-on Visual Testing Chuyên Biệt Trên Viewport (Kéo thả, đổi trạng thái thời gian thực, kiểm tra 4 hình thái công trình).
-  - `Step 3.2`: Triển khai 3 Công Trình Cốt Lõi (District Center, Storage, Lumberjack Flag) [HOÀN THÀNH 100%]:
+  - `Step 3.2`: Triển khai 3 Công Trình Cốt Lõi (District Center, Storage, Lumberjack Flag) [XONG]:
     - `Step 3.2.1`: [XONG] C++ Header & Architecture (`ATimberDistrictCenter`, `ATimberStorage`, `ATimberLumberjackFlag`).
     - `Step 3.2.2`: [XONG] C++ Implementation Logic (Sức chứa kho, Slot công nhân, Quét cây trong bán kính).
     - `Step 3.2.3`: [XONG] Hands-on UE Editor Setup & Testing (Tạo 3 Blueprint `BP_DistrictCenter`, `BP_Storage`, `BP_LumberjackFlag`, gán Mesh và kiểm thử trên Viewport).
-  - `Step 3.3`: Hệ Thống Cung Ứng Vật Liệu Xây Dựng (Hauling & Build Progress) [HOÀN THÀNH 100%]:
+  - `Step 3.3`: Hệ Thống Cung Ứng Vật Liệu Xây Dựng (Hauling & Build Progress) [XONG]:
     - `Step 3.3.1`: [XONG] C++ Header & Architecture (`FHaulJob`, `EHaulJobType`, `EHaulJobPriority`, Hauling APIs).
     - `Step 3.3.2`: [XONG] C++ Implementation Logic (Cung ứng gỗ thi công móng, thanh tiến độ xây, tự động hoàn thiện).
     - `Step 3.3.3`: [XONG] Hands-on UE Editor Setup & Testing (Nút CallInEditor thử nghiệm giao gỗ & hoàn thiện công trình trực tiếp trên Viewport).
-  - `Step 3.4`: Công cụ In-Editor Brush (Click chuột vẽ / sửa địa hình & đặt công trình trực tiếp trong Viewport):
-    - `Step 3.4.1`: [TIẾP THEO] C++ Header & Architecture (`EBrushMode`, `EBrushToolAction`, Raycast Grid Picking APIs).
-    - `Step 3.4.2`: C++ Implementation Logic (Raycast từ Camera/Cursor chuột -> Lát đường `BuildPath`, Xóa đường `RemovePath`, Đặt móng công trình `SpawnBuilding`).
-    - `Step 3.4.3`: Hands-on UE Editor Setup & Testing (Thử nghiệm kéo chuột vẽ đường đi và click đặt công trình trực tiếp trên Viewport).
-- **Phase 4: Hải Ly AI & Vòng Lặp Khai Thác Gỗ**
+  - `Step 3.4`: Công cụ In-Editor & Runtime Brush + HUD Xây Dựng Tương Tác Chuột [XONG]:
+    - `Step 3.4.1`: [XONG] C++ Header & Architecture (`ETimberBrushMode`, `ATimberPlayerController`, Raycast Grid Picking, Hover Hologram Preview, Thuật toán kiểm tra mặt bằng $N \times M$, APIs Lát đường / Phá hủy / Đặt móng).
+    - `Step 3.4.2`: [XONG] C++ Implementation Logic (Raycast 3D Cursor, Hologram Hover thời gian thực Xanh/Đỏ, Phím tắt `R` xoay 90°, Logic Lát đường / Phá hủy đa năng / Đặt móng `Scaffold`).
+    - `Step 3.4.3`: [XONG] Hands-on UE Editor Setup — Thiết Kế UI Widget Blueprint (`WBP_SimpleBuildHUD` 5 nút ở đáy màn hình, binding sự kiện Click tới Controller, setup `BP_TimberPlayerController` & `BP_TimberGameMode`).
+    - `Step 3.4.4`: [XONG] Hands-on Runtime Viewport Testing & Grid Standardization (Chuẩn hóa `BaseHeight = 1`, cơ chế Drag-to-Build Kéo thả Ghost Preview dải đường trước khi thả chuột xây hàng loạt).
+  - `Step 3.5`: Mũi Tên Hướng Cửa, Cảnh Báo Chưa Nối Đường & Tối Ưu Hóa Refactor Clean Code [XONG]:
+    - `Step 3.5.1`: [XONG] C++ Header & Architecture (Khai báo `DoorArrowComponent`, `UnconnectedIconWidgetComponent`, `CalcDoorArrowLocalOffset`, `bIsHologramPreview`, `bCanBeDemolished`).
+    - `Step 3.5.2`: [XONG] C++ Implementation Logic (Tự động kích hoạt Mũi tên 3D chỉ hướng cửa, xoay 90° phím `R`, tự động ẩn khi lát đường đè lên ô cửa, ép buộc kiểm tra đường chạm đúng ô cửa).
+    - `Step 3.5.3`: [XONG] Tối Ưu Refactor Codebase & Sửa Lỗi Demolish (Xóa code thừa, bảo vệ Nhà Chính không thể xóa, khớp chính xác 100% Instance ISM theo vị trí 3D thực tế khi xóa đường).
+    - `Phase 3 Retrospective`: [XONG] Tổng kết toàn diện Hệ thống Công trình, Móng giàn giáo, Cọ vẽ và Kết nối mạng lưới.
+- **Phase 4: Hải Ly AI & Vòng Lặp Khai Thác Gỗ [TIẾP THEO]**
   - `Step 4.1`: Beaver AI Controller & State Machine:
     - `Step 4.1.1`: C++ Header & Architecture (`ABeaverAgent`, `EBeaverState`).
     - `Step 4.1.2`: C++ Implementation Logic (FSM AI, Overlap va chạm, Tìm đường A*).
@@ -268,6 +338,7 @@ Mục này cung cấp tài liệu kỹ thuật chuyên sâu và các nguyên lý
     - `Step 5.1.1`: C++ Header (`ATimberRTSCamera`, Pan, Orbit, Zoom).
     - `Step 5.1.2`: C++ Implementation Logic (Xử lý Input WASD, Q/E, Mouse Wheel).
     - `Step 5.1.3`: Hands-on UE Editor Setup & Testing (Thiết lập Camera Rig Actor trên Level).
+    - `Step 5.1.4`: [ENHANCE] Bổ trợ Lát đường & Raycast chống lệch góc nhìn Camera (Lọc bỏ va chạm thân công trình khi lát đường, chiếu thẳng xuống mặt sàn lưới Ground Plane để triệt tiêu 100% hiện tượng Perspective Parallax khi xoay Camera).
   - `Step 5.2`: Game Speed Manager:
     - `Step 5.2.1`: C++ Header (Time Dilation Manager).
     - `Step 5.2.2`: C++ Implementation Logic (Pause, 1x, 2x, 3x).

@@ -44,3 +44,14 @@
 * **Quy tắc bắt buộc**:
   - Số lượng Micro-Steps **hoàn toàn co giãn linh hoạt** theo độ phức tạp của Step: Có thể là 3, 4 hoặc 5 micro-steps (ví dụ: `.1 C++ Header`, `.2 C++ Logic`, `.3 UE Setup`, `.4 Hands-on Viewport Testing / Debugger Tools`).
   - Khi người dùng yêu cầu tách riêng một Micro-Step chuyên biệt cho việc Testing hoặc cấu hình nâng cao, lập tức cập nhật vào Master Plan và cung cấp hướng dẫn chuyên sâu riêng biệt cho Micro-Step đó!
+
+---
+
+## 📌 PROPOSAL 6: Kiến Trúc Tương Tác Chuột Runtime & Giao Diện HUD Xây Dựng (2026-08-17)
+* **Vấn đề**: Người chơi cần tương tác trực tiếp bằng chuột khi bấm Play như game chiến thuật thực tế (vừa click UI vừa click thế giới 3D).
+* **Quy tắc bắt buộc**:
+  1. **Game & UI Input Mode**: Bật `SetShowMouseCursor(true)` và `SetInputMode(FInputModeGameAndUI)` để chuột click mượt mà cả trên Widget UI và Viewport 3D.
+  2. **Thuật Toán Kiểm Tra Móng Linh Hoạt ($N \times M$)**: Khi đặt công trình, thuật toán phải quét toàn bộ $N \times M$ ô của Footprint theo góc xoay $0^\circ/90^\circ/180^\circ/270^\circ$, đảm bảo $100\%$ các ô cùng cao độ $Z$ và không vướng cây/vật cản.
+  3. **Hologram Hover Preview**: Luôn hiển thị bóng Hologram bám theo con trỏ chuột thời gian thực (Xanh = Hợp lệ, Đỏ = Không hợp lệ) để người chơi dễ dàng ngắm vị trí trước khi click đặt.
+  4. **Công Cụ Phá Hủy Đa Năng (Demolish)**: Tích hợp xóa đường đi `DirtPath` và tháo dỡ công trình vào chung 1 công cụ tiện lợi.
+

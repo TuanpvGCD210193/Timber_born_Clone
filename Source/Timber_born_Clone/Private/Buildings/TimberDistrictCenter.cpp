@@ -10,6 +10,7 @@ ATimberDistrictCenter::ATimberDistrictCenter()
 	DoorRelativeCoord = FIntVector(0, 1, 0);
 	WoodCost = 0; // Công trình trung tâm được dựng sẵn ban đầu
 	BuildingState = EBuildingState::Completed;
+	bCanBeDemolished = false; // BẢO VỆ NHÀ CHÍNH: Tuyệt đối không cho phép phá hủy!
 
 	MaxWoodStorage = 50;
 	CurrentWoodStock = 20; // 20 gỗ khởi nghiệp

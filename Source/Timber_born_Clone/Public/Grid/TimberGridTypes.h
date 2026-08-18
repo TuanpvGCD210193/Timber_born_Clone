@@ -121,9 +121,9 @@ struct FTerrainGenConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen")
 	int32 MapSeed = 0;
 
-	/** Độ cao mặt đất cơ bản (số tầng block, vd: 2) */
+	/** Độ cao mặt đất cơ bản (số tầng block, vd: 1) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen", meta = (ClampMin = "1", ClampMax = "10"))
-	int32 BaseHeight = 2;
+	int32 BaseHeight = 1;
 
 	/** Số lượng cao nguyên đồi núi chính */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain Gen", meta = (ClampMin = "0", ClampMax = "10"))
@@ -233,3 +233,16 @@ struct TIMBER_BORN_CLONE_API FTreeGrowthConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tree Lifecycle", meta = (ClampMin = "1"))
 	int32 WoodPerMatureTree = 2;
 };
+
+/**
+ * Chế độ cọ vẽ / công cụ tương tác chuột trong game (Step 3.4)
+ */
+UENUM(BlueprintType)
+enum class ETimberBrushMode : uint8
+{
+	None			UMETA(DisplayName = "None / Con trỏ thường"),
+	PaintPath		UMETA(DisplayName = "Lát Đường (Dirt Path)"),
+	Demolish		UMETA(DisplayName = "Phá Hủy (Đường & Công Trình)"),
+	PlaceBuilding	UMETA(DisplayName = "Đặt Móng Công Trình")
+};
+

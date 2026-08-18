@@ -60,6 +60,14 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Components")
 	TObjectPtr<UStaticMeshComponent> ScaffoldMeshComponent;
 
+	/** Static Mesh Mũi tên 3D chỉ hướng Cửa ra vào kết nối với đường đi */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Components")
+	TObjectPtr<UStaticMeshComponent> DoorArrowComponent;
+
+	/** Widget Component hiển thị Icon Billboard cảnh báo đứt đường trên đầu công trình */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Components")
+	TObjectPtr<class UWidgetComponent> UnconnectedIconWidgetComponent;
+
 	// ==========================================
 	// CONFIGURATION & FOOTPRINT (DATA-DRIVEN)
 	// ==========================================
@@ -75,6 +83,10 @@ public:
 	/** Kích thước chiếm ô lưới theo chiều ngang (X, Y) (vd: 1x1, 2x2) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber")
 	FIntPoint FootprintSize = FIntPoint(1, 1);
+
+	/** Cho phép người chơi dùng công cụ Demolish để tháo dỡ công trình này không */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber")
+	bool bCanBeDemolished = true;
 
 	/** Tọa độ ô lưới gốc (Góc dưới bên trái của công trình trên bản đồ) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber")
@@ -107,6 +119,17 @@ public:
 	/** Cờ báo hiệu công trình đã kết nối đường đi về District Center chưa */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber")
 	bool bIsConnectedToDistrict = false;
+
+	/** Cờ đánh dấu Actor này chỉ là bóng mờ Hologram xem trước (không đăng ký vào GridManager) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber")
+	bool bIsHologramPreview = false;
+
+protected:
+	/** Con trỏ cache tới GridManager để tránh gọi GetActorOfClass liên tục */
+	UPROPERTY()
+	mutable TWeakObjectPtr<ATimberGridManager> CachedGridManager = nullptr;
+
+public:
 
 	// ==========================================
 	// MATERIAL REFERENCES
@@ -172,6 +195,22 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Timber")
 	TArray<FIntVector> GetOccupiedGridCoords() const;
 
+	/** Lấy danh sách các ô đất tiếp giáp bao quanh chu vi ngoài móng công trình (để kết nối đường) */
+	UFUNCTION(BlueprintPure, Category = "Timber")
+	TArray<FIntVector> GetPerimeterAdjacentCoords() const;
+
+	/** Kiểm tra xem ô cửa của công trình đã có đường lát đè lên chưa */
+	UFUNCTION(BlueprintPure, Category = "Timber")
+	bool HasPathAtDoor() const;
+
+	/** Ẩn/Hiện Mũi tên 3D chỉ hướng cửa (Bật khi vào chế độ Lát Đường PaintPath) */
+	UFUNCTION(BlueprintCallable, Category = "Timber")
+	void SetDoorArrowVisible(bool bVisible);
+
+	/** Cập nhật trạng thái kết nối với District Center (Tự động Ẩn/Hiện Icon cảnh báo Unconnected Icon) */
+	UFUNCTION(BlueprintCallable, Category = "Timber")
+	void UpdateDistrictConnectionVisuals(bool bConnected);
+
 	// ==========================================
 	// CALL-IN-EDITOR DEBUGGER (STEP 3.3.3)
 	// ==========================================
@@ -195,4 +234,7 @@ public:
 protected:
 	/** Cập nhật Material và trạng thái ẩn/hiện của các Mesh Component tương ứng với BuildingState */
 	virtual void UpdateVisuals();
+
+	/** Tính toán vị trí tương đối (Local Offset) của Mũi tên chỉ hướng cửa nằm ngoài mặt tiền móng */
+	FVector CalcDoorArrowLocalOffset() const;
 };

@@ -1,8 +1,11 @@
 // Copyright (c) 2026 Timberborn Clone Project. All Rights Reserved.
 
 #include "Timber_born_Clone/Public/Buildings/TimberBuildingBase.h"
+#include "Timber_born_Clone/Public/Buildings/TimberDistrictCenter.h"
 #include "Timber_born_Clone/Public/Grid/TimberGridManager.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/WidgetComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 ATimberBuildingBase::ATimberBuildingBase()
 {
@@ -24,11 +27,46 @@ ATimberBuildingBase::ATimberBuildingBase()
 	ScaffoldMeshComponent->SetupAttachment(RootComponent);
 	ScaffoldMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	ScaffoldMeshComponent->SetVisibility(false);
+
+	// Tạo Door Arrow Component (Mũi tên 3D chỉ hướng cửa)
+	DoorArrowComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DoorArrowComponent"));
+	DoorArrowComponent->SetupAttachment(RootComponent);
+	DoorArrowComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	DoorArrowComponent->SetVisibility(false);
+
+	// Tạo Unconnected Icon Widget Component (Billboard icon cảnh báo trên đầu)
+	UnconnectedIconWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("UnconnectedIconWidgetComponent"));
+	UnconnectedIconWidgetComponent->SetupAttachment(RootComponent);
+	UnconnectedIconWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	UnconnectedIconWidgetComponent->SetDrawAtDesiredSize(true);
+	UnconnectedIconWidgetComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 150.0f));
+	UnconnectedIconWidgetComponent->SetVisibility(false);
 }
 
 void ATimberBuildingBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Nếu là bóng mờ Hologram xem trước -> Tuyệt đối không đăng ký vào GridManager
+	if (bIsHologramPreview)
+	{
+		UpdateVisuals();
+		return;
+	}
+
+	// Tự động tìm GridManager và đăng ký công trình nếu được kéo thả vào Level từ trước
+	AActor* FoundGrid = UGameplayStatics::GetActorOfClass(GetWorld(), ATimberGridManager::StaticClass());
+	if (ATimberGridManager* Grid = Cast<ATimberGridManager>(FoundGrid))
+	{
+		CachedGridManager = Grid;
+
+		if (OriginGridCoord.IsZero())
+		{
+			OriginGridCoord = Grid->WorldLocationToGridCoord(GetActorLocation());
+		}
+		Grid->RegisterBuilding(this);
+	}
+
 	UpdateVisuals();
 }
 
@@ -79,47 +117,73 @@ void ATimberBuildingBase::UpdateVisuals()
 	switch (BuildingState)
 	{
 	case EBuildingState::Ghost_Valid:
-		// Hiện Mesh công trình với Material Hologram Xanh, ẩn giàn giáo, tắt va chạm
+	case EBuildingState::Ghost_Invalid:
+		// Hiện Mesh công trình với Material Hologram tương ứng (Xanh/Đỏ), ẩn giàn giáo, tắt va chạm
+		BuildingMeshComponent->SetRelativeScale3D(FVector(FootprintSize.X, FootprintSize.Y, 1.0f));
+		BuildingMeshComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 50.0f));
 		BuildingMeshComponent->SetVisibility(true);
-		ScaffoldMeshComponent->SetVisibility(false);
 		BuildingMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		if (GhostValidMaterial)
+
+		ScaffoldMeshComponent->SetVisibility(false);
+		ScaffoldMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		if (UnconnectedIconWidgetComponent)
+		{
+			UnconnectedIconWidgetComponent->SetVisibility(false);
+		}
+		if (DoorArrowComponent)
+		{
+			DoorArrowComponent->SetRelativeLocation(CalcDoorArrowLocalOffset());
+			DoorArrowComponent->SetVisibility(true);
+		}
+
+		if (BuildingState == EBuildingState::Ghost_Valid && GhostValidMaterial)
 		{
 			BuildingMeshComponent->SetMaterial(0, GhostValidMaterial);
 		}
-		break;
-
-	case EBuildingState::Ghost_Invalid:
-		// Hiện Mesh công trình với Material Hologram Đỏ, ẩn giàn giáo, tắt va chạm
-		BuildingMeshComponent->SetVisibility(true);
-		ScaffoldMeshComponent->SetVisibility(false);
-		BuildingMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		if (GhostInvalidMaterial)
+		else if (BuildingState == EBuildingState::Ghost_Invalid && GhostInvalidMaterial)
 		{
 			BuildingMeshComponent->SetMaterial(0, GhostInvalidMaterial);
 		}
 		break;
 
 	case EBuildingState::UnderConstruction:
-		// Ẩn Mesh hoàn thiện, hiện giàn giáo móng xây dựng
-		BuildingMeshComponent->SetVisibility(false);
+		// Trạng thái móng giàn giáo: Tự động gán Mesh móng dẹp phẳng 20cm phủ kín trọn vẹn FootprintSize
+		if (ScaffoldMeshComponent->GetStaticMesh() == nullptr && BuildingMeshComponent->GetStaticMesh() != nullptr)
+		{
+			ScaffoldMeshComponent->SetStaticMesh(BuildingMeshComponent->GetStaticMesh());
+		}
+
+		ScaffoldMeshComponent->SetRelativeScale3D(FVector(FootprintSize.X, FootprintSize.Y, 0.2f));
+		ScaffoldMeshComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 10.0f));
 		ScaffoldMeshComponent->SetVisibility(true);
 		ScaffoldMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 		if (ScaffoldMaterial)
 		{
 			ScaffoldMeshComponent->SetMaterial(0, ScaffoldMaterial);
 		}
+
+		BuildingMeshComponent->SetVisibility(false);
+		BuildingMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		UpdateDistrictConnectionVisuals(bIsConnectedToDistrict);
 		break;
 
 	case EBuildingState::Completed:
-		// Hiện Mesh công trình hoàn thiện với Material chính thức, ẩn giàn giáo
+		// Trạng thái hoàn thiện: Hiện Mesh công trình cao đầy đủ, ẩn móng giàn giáo
+		BuildingMeshComponent->SetRelativeScale3D(FVector(FootprintSize.X, FootprintSize.Y, 1.0f));
+		BuildingMeshComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 50.0f));
 		BuildingMeshComponent->SetVisibility(true);
-		ScaffoldMeshComponent->SetVisibility(false);
 		BuildingMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 		if (FinishedMaterial)
 		{
 			BuildingMeshComponent->SetMaterial(0, FinishedMaterial);
 		}
+
+		ScaffoldMeshComponent->SetVisibility(false);
+		ScaffoldMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		UpdateDistrictConnectionVisuals(bIsConnectedToDistrict);
 		break;
 	}
 }
@@ -171,11 +235,30 @@ void ATimberBuildingBase::AdvanceBuildProgress(float WorkDeltaTime)
 
 FIntVector ATimberBuildingBase::GetDoorGridCoord() const
 {
+	if (!CachedGridManager.IsValid())
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			AActor* FoundGrid = UGameplayStatics::GetActorOfClass(World, ATimberGridManager::StaticClass());
+			CachedGridManager = Cast<ATimberGridManager>(FoundGrid);
+		}
+	}
+
+	if (CachedGridManager.IsValid() && DoorArrowComponent)
+	{
+		return CachedGridManager->WorldLocationToGridCoord(DoorArrowComponent->GetComponentLocation());
+	}
+
 	return OriginGridCoord + DoorRelativeCoord;
 }
 
 FVector ATimberBuildingBase::GetDoorWorldLocation(const ATimberGridManager* GridManager) const
 {
+	if (DoorArrowComponent)
+	{
+		return DoorArrowComponent->GetComponentLocation();
+	}
+
 	if (GridManager)
 	{
 		return GridManager->GridCoordToWorldLocation(GetDoorGridCoord(), true);
@@ -197,17 +280,67 @@ bool ATimberBuildingBase::IsFullyBuilt() const
 TArray<FIntVector> ATimberBuildingBase::GetOccupiedGridCoords() const
 {
 	TArray<FIntVector> Coords;
-	Coords.Reserve(FootprintSize.X * FootprintSize.Y);
 
-	for (int32 Dx = 0; Dx < FootprintSize.X; ++Dx)
+	int32 SizeX = FootprintSize.X;
+	int32 SizeY = FootprintSize.Y;
+
+	// Tính toán chiều dài/chiều rộng thực tế theo góc xoay Yaw của Actor
+	const int32 YawAngle = FMath::RoundToInt(GetActorRotation().Yaw) % 360;
+	const int32 NormalizedYaw = (YawAngle < 0) ? (YawAngle + 360) : YawAngle;
+
+	if (NormalizedYaw == 90 || NormalizedYaw == 270)
 	{
-		for (int32 Dy = 0; Dy < FootprintSize.Y; ++Dy)
+		SizeX = FootprintSize.Y;
+		SizeY = FootprintSize.X;
+	}
+
+	Coords.Reserve(SizeX * SizeY);
+
+	for (int32 Dx = 0; Dx < SizeX; ++Dx)
+	{
+		for (int32 Dy = 0; Dy < SizeY; ++Dy)
 		{
 			Coords.Add(FIntVector(OriginGridCoord.X + Dx, OriginGridCoord.Y + Dy, OriginGridCoord.Z));
 		}
 	}
 
 	return Coords;
+}
+
+TArray<FIntVector> ATimberBuildingBase::GetPerimeterAdjacentCoords() const
+{
+	TArray<FIntVector> PerimeterCoords;
+	const int32 BaseZ = OriginGridCoord.Z;
+
+	int32 SizeX = FootprintSize.X;
+	int32 SizeY = FootprintSize.Y;
+
+	const int32 YawAngle = FMath::RoundToInt(GetActorRotation().Yaw) % 360;
+	const int32 NormalizedYaw = (YawAngle < 0) ? (YawAngle + 360) : YawAngle;
+
+	if (NormalizedYaw == 90 || NormalizedYaw == 270)
+	{
+		SizeX = FootprintSize.Y;
+		SizeY = FootprintSize.X;
+	}
+
+	// Cạnh Nam (Y = MinY - 1) và Cạnh Bắc (Y = MaxY + 1)
+	for (int32 Dx = 0; Dx < SizeX; ++Dx)
+	{
+		const int32 CurrentX = OriginGridCoord.X + Dx;
+		PerimeterCoords.Add(FIntVector(CurrentX, OriginGridCoord.Y - 1, BaseZ));
+		PerimeterCoords.Add(FIntVector(CurrentX, OriginGridCoord.Y + SizeY, BaseZ));
+	}
+
+	// Cạnh Tây (X = MinX - 1) và Cạnh Đông (X = MaxX + 1)
+	for (int32 Dy = 0; Dy < SizeY; ++Dy)
+	{
+		const int32 CurrentY = OriginGridCoord.Y + Dy;
+		PerimeterCoords.Add(FIntVector(OriginGridCoord.X - 1, CurrentY, BaseZ));
+		PerimeterCoords.Add(FIntVector(OriginGridCoord.X + SizeX, CurrentY, BaseZ));
+	}
+
+	return PerimeterCoords;
 }
 
 int32 ATimberBuildingBase::GetRemainingWoodNeeded() const
@@ -218,6 +351,128 @@ int32 ATimberBuildingBase::GetRemainingWoodNeeded() const
 float ATimberBuildingBase::GetBuildProgressPercent() const
 {
 	return CurrentBuildProgress * 100.0f;
+}
+
+bool ATimberBuildingBase::HasPathAtDoor() const
+{
+	if (!CachedGridManager.IsValid())
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			AActor* FoundGrid = UGameplayStatics::GetActorOfClass(World, ATimberGridManager::StaticClass());
+			CachedGridManager = Cast<ATimberGridManager>(FoundGrid);
+		}
+	}
+
+	if (CachedGridManager.IsValid())
+	{
+		const FIntVector DoorCoord = GetDoorGridCoord();
+		// Kiểm tra cả tầng Z của móng và tầng Z+1 (độ cao của DirtPath)
+		if (CachedGridManager->HasPathAt(DoorCoord) || CachedGridManager->HasPathAt(FIntVector(DoorCoord.X, DoorCoord.Y, DoorCoord.Z + 1)))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void ATimberBuildingBase::SetDoorArrowVisible(bool bVisible)
+{
+	if (!DoorArrowComponent)
+	{
+		return;
+	}
+
+	// 1. Nếu công trình đang ở dạng Hologram xem trước -> Tuyệt đối ẨN
+	if (BuildingState == EBuildingState::Ghost_Valid || BuildingState == EBuildingState::Ghost_Invalid)
+	{
+		DoorArrowComponent->SetVisibility(false);
+		return;
+	}
+
+	// 2. Nếu là Nhà Chính (District Center) -> Luôn hiện Mũi Tên khi đang bật chế độ Lát Đường (bVisible)
+	if (IsA(ATimberDistrictCenter::StaticClass()))
+	{
+		if (bVisible)
+		{
+			DoorArrowComponent->SetRelativeLocation(CalcDoorArrowLocalOffset());
+			DoorArrowComponent->SetVisibility(true);
+		}
+		else
+		{
+			DoorArrowComponent->SetVisibility(false);
+		}
+		return;
+	}
+
+	// 3. Nếu đã có đường đè lên ô cửa HOẶC công trình đã kết nối hoàn toàn về Nhà Chính -> ẨN
+	if (HasPathAtDoor() || bIsConnectedToDistrict)
+	{
+		DoorArrowComponent->SetVisibility(false);
+		return;
+	}
+
+	// 4. Nếu ở chế độ Lát Đường (bVisible == true) và chưa bị đường đè -> HIỆN MŨI TÊN
+	if (bVisible)
+	{
+		// Căn chỉnh vị trí Mũi tên 3D nằm chính xác tại ô đường ngay phía trước cửa (bên ngoài móng)
+		DoorArrowComponent->SetRelativeLocation(CalcDoorArrowLocalOffset());
+		DoorArrowComponent->SetVisibility(true);
+	}
+	else
+	{
+		DoorArrowComponent->SetVisibility(false);
+	}
+}
+
+FVector ATimberBuildingBase::CalcDoorArrowLocalOffset() const
+{
+	const float LocalX = (DoorRelativeCoord.X - (FootprintSize.X - 1) * 0.5f) * 100.0f;
+	const float LocalY = (FootprintSize.Y * 0.5f) * 100.0f + 50.0f; // Đẩy ra ngoài mặt tiền 1 ô (50cm)
+	const float LocalZ = 15.0f;                                     // Nổi nhẹ 15cm trên mặt sàn/cỏ
+
+	return FVector(LocalX, LocalY, LocalZ);
+}
+
+void ATimberBuildingBase::UpdateDistrictConnectionVisuals(bool bConnected)
+{
+	bIsConnectedToDistrict = bConnected;
+
+	// District Center là gốc nguồn nên KHÔNG BAO GIỜ hiện icon No Road
+	if (IsA(ATimberDistrictCenter::StaticClass()))
+	{
+		bIsConnectedToDistrict = true;
+		if (UnconnectedIconWidgetComponent)
+		{
+			UnconnectedIconWidgetComponent->SetVisibility(false);
+		}
+		if (DoorArrowComponent)
+		{
+			DoorArrowComponent->SetVisibility(false);
+		}
+		return;
+	}
+
+	if (UnconnectedIconWidgetComponent)
+	{
+		// Nếu đang ở trạng thái Hologram xem trước (chưa đặt móng) thì TUYỆT ĐỐI KHÔNG HIỆN
+		if (BuildingState == EBuildingState::Ghost_Valid || BuildingState == EBuildingState::Ghost_Invalid)
+		{
+			UnconnectedIconWidgetComponent->SetVisibility(false);
+		}
+		else
+		{
+			// Nếu đã kết nối đường về District Center thì ẩn, nếu đứt đường thì hiện
+			UnconnectedIconWidgetComponent->SetVisibility(!bConnected);
+		}
+	}
+
+	// Nếu đã kết nối đường thành công HOẶC ô cửa đã có đường đè lên -> tự động tắt Mũi tên chỉ hướng
+	if ((bConnected || HasPathAtDoor()) && DoorArrowComponent)
+	{
+		DoorArrowComponent->SetVisibility(false);
+	}
 }
 
 void ATimberBuildingBase::Editor_DeliverWoodStep()

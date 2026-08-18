@@ -246,6 +246,38 @@ public:
 	TArray<FTimberCell> SavedGridData;
 
 	// ==========================================
+	// BUILDING REGISTRY & RUNTIME QUERIES (STEP 3.4)
+	// ==========================================
+
+	/** Tìm tọa độ của ô khối đặc (Solid Ground) cao nhất tại cột (X, Y) */
+	UFUNCTION(BlueprintPure, Category = "Timber|Grid Math")
+	bool GetTopSolidGridCoordAt(int32 X, int32 Y, FIntVector& OutTopCoord) const;
+
+	/** Kiểm tra ô có phải là không gian trống sẵn sàng để đặt công trình lên trên không */
+	UFUNCTION(BlueprintPure, Category = "Timber|Grid Validation")
+	bool IsCellEmptyForBuilding(const FIntVector& Coord) const;
+
+	/** Lấy công trình đang chiếm dụng tại tọa độ ô lưới (trả về nullptr nếu không có) */
+	UFUNCTION(BlueprintPure, Category = "Timber|Buildings")
+	ATimberBuildingBase* GetBuildingAt(const FIntVector& Coord) const;
+
+	/** Đăng ký công trình mới vào hệ thống quản lý */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Buildings")
+	void RegisterBuilding(ATimberBuildingBase* Building);
+
+	/** Hủy đăng ký công trình khi bị tháo dỡ / phá hủy */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Buildings")
+	void UnregisterBuilding(ATimberBuildingBase* Building);
+
+	/** Cập nhật trạng thái kết nối đường về District Center cho tất cả các công trình trên bản đồ */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Buildings")
+	void UpdateAllBuildingsConnectionStatus();
+
+	/** Danh sách tất cả các công trình đang tồn tại trên bản đồ */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber")
+	TArray<TObjectPtr<ATimberBuildingBase>> RegisteredBuildings;
+
+	// ==========================================
 	// GETTERS & DEBUG
 	// ==========================================
 
@@ -262,6 +294,10 @@ public:
 	void InitializeGrid();
 
 	/** Vẽ khung dây Debug kiểm tra phạm vi ô lưới trong Viewport */
-	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions")
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions", meta = (DisplayName = "🔍 Draw Debug Grid Bounds"))
 	void DrawDebugGridBounds();
+
+	/** Vẽ trực quan tọa độ (X, Y, Z) của các ô mặt đất trong Viewport để kiểm tra cao độ */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions", meta = (DisplayName = "📍 Draw Debug Cell Coordinates"))
+	void DrawDebugCellCoordinates();
 };
