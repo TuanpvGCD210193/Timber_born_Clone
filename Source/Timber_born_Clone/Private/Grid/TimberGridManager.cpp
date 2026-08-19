@@ -61,6 +61,10 @@ void ATimberGridManager::BeginPlay()
 		InitializeGrid();
 		RebuildISMComponents();
 	}
+
+	// Đảm bảo sau khi tất cả các Actor hoàn tất BeginPlay (0.1 giây), hệ thống sẽ quét kết nối đường đi toàn cục 1 lần
+	FTimerHandle InitRoadTimer;
+	GetWorld()->GetTimerManager().SetTimer(InitRoadTimer, this, &ATimberGridManager::UpdateAllBuildingsConnectionStatus, 0.1f, false);
 }
 
 void ATimberGridManager::Tick(float DeltaTime)
@@ -1255,19 +1259,36 @@ void ATimberGridManager::UpdateAllBuildingsConnectionStatus()
 		}
 	}
 
-	// 3. Lấy tọa độ ô cửa của Nhà Chính (Nơi bắt đầu phát tỏa đường đi)
-	FIntVector DCDoorCoord = DistrictCenterDoorCoord;
+	// 3. Thu thập toàn bộ các nút đường tiếp giáp hoặc xuất phát từ Nhà Chính
+	TArray<FIntVector> DCRoadNodes;
 	if (DistrictCenterActor)
 	{
-		DCDoorCoord = DistrictCenterActor->GetDoorGridCoord();
-	}
+		// Kiểm tra ô Cửa của Nhà Chính
+		const FIntVector DCDoor = DistrictCenterActor->GetDoorGridCoord();
+		if (HasPathAt(DCDoor)) DCRoadNodes.Add(DCDoor);
+		if (HasPathAt(FIntVector(DCDoor.X, DCDoor.Y, DCDoor.Z + 1))) DCRoadNodes.Add(FIntVector(DCDoor.X, DCDoor.Y, DCDoor.Z + 1));
 
-	const bool bHasPathAtDCDoor = HasPathAt(DCDoorCoord) || HasPathAt(FIntVector(DCDoorCoord.X, DCDoorCoord.Y, DCDoorCoord.Z + 1));
-	const FIntVector ActualDCDoorRoad = HasPathAt(DCDoorCoord) ? DCDoorCoord : FIntVector(DCDoorCoord.X, DCDoorCoord.Y, DCDoorCoord.Z + 1);
+		// Kiểm tra tất cả các ô đường chạm vào chu vi Nhà Chính
+		for (const FIntVector& Peri : DistrictCenterActor->GetPerimeterAdjacentCoords())
+		{
+			if (HasPathAt(Peri)) DCRoadNodes.AddUnique(Peri);
+			if (HasPathAt(FIntVector(Peri.X, Peri.Y, Peri.Z + 1))) DCRoadNodes.AddUnique(FIntVector(Peri.X, Peri.Y, Peri.Z + 1));
+		}
+	}
+	else
+	{
+		if (HasPathAt(DistrictCenterDoorCoord)) DCRoadNodes.Add(DistrictCenterDoorCoord);
+		if (HasPathAt(FIntVector(DistrictCenterDoorCoord.X, DistrictCenterDoorCoord.Y, DistrictCenterDoorCoord.Z + 1))) DCRoadNodes.Add(FIntVector(DistrictCenterDoorCoord.X, DistrictCenterDoorCoord.Y, DistrictCenterDoorCoord.Z + 1));
+	}
 
 	// 4. Cập nhật trạng thái kết nối cho từng công trình
 	for (const TObjectPtr<ATimberBuildingBase>& BuildingPtr : RegisteredBuildings)
 	{
+		if (!BuildingPtr || !IsValid(BuildingPtr))
+		{
+			continue;
+		}
+
 		// Nhà Chính luôn luôn là cội nguồn (bConnected = true)
 		if (BuildingPtr->IsA<ATimberDistrictCenter>())
 		{
@@ -1275,18 +1296,34 @@ void ATimberGridManager::UpdateAllBuildingsConnectionStatus()
 			continue;
 		}
 
-		// LẤY CHÍNH XÁC Ô CỬA RA VÀO CỦA CÔNG TRÌNH MỤC TIÊU
+		// Thu thập các nút đường chạm vào công trình mục tiêu (Ô cửa + Chu vi)
+		TArray<FIntVector> TargetRoadNodes;
 		const FIntVector TargetDoorCoord = BuildingPtr->GetDoorGridCoord();
-		const bool bHasPathAtTargetDoor = HasPathAt(TargetDoorCoord) || HasPathAt(FIntVector(TargetDoorCoord.X, TargetDoorCoord.Y, TargetDoorCoord.Z + 1));
-		const FIntVector ActualTargetDoorRoad = HasPathAt(TargetDoorCoord) ? TargetDoorCoord : FIntVector(TargetDoorCoord.X, TargetDoorCoord.Y, TargetDoorCoord.Z + 1);
+		if (HasPathAt(TargetDoorCoord)) TargetRoadNodes.Add(TargetDoorCoord);
+		if (HasPathAt(FIntVector(TargetDoorCoord.X, TargetDoorCoord.Y, TargetDoorCoord.Z + 1))) TargetRoadNodes.Add(FIntVector(TargetDoorCoord.X, TargetDoorCoord.Y, TargetDoorCoord.Z + 1));
 
-		bool bConnected = false;
-		if (bHasPathAtDCDoor && bHasPathAtTargetDoor)
+		for (const FIntVector& Peri : BuildingPtr->GetPerimeterAdjacentCoords())
 		{
-			int32 OutDist = 0;
-			if (PathGraph->IsReachable(ActualDCDoorRoad, ActualTargetDoorRoad, OutDist))
+			if (HasPathAt(Peri)) TargetRoadNodes.AddUnique(Peri);
+			if (HasPathAt(FIntVector(Peri.X, Peri.Y, Peri.Z + 1))) TargetRoadNodes.AddUnique(FIntVector(Peri.X, Peri.Y, Peri.Z + 1));
+		}
+
+		// Kiểm tra tính thông đường giữa mạng lưới Nhà Chính và Công Trình
+		bool bConnected = false;
+		for (const FIntVector& StartNode : DCRoadNodes)
+		{
+			for (const FIntVector& EndNode : TargetRoadNodes)
 			{
-				bConnected = true;
+				int32 OutDist = 0;
+				if (PathGraph->IsReachable(StartNode, EndNode, OutDist))
+				{
+					bConnected = true;
+					break;
+				}
+			}
+			if (bConnected)
+			{
+				break;
 			}
 		}
 

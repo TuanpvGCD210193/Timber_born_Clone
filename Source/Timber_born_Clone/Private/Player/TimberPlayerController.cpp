@@ -1,6 +1,7 @@
 #include "Timber_born_Clone/Public/Player/TimberPlayerController.h"
 #include "Timber_born_Clone/Public/Grid/TimberGridManager.h"
 #include "Timber_born_Clone/Public/Buildings/TimberBuildingBase.h"
+#include "Timber_born_Clone/Public/Beavers/BeaverAgent.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
@@ -373,6 +374,24 @@ void ATimberPlayerController::OnLeftMouseDown()
 {
 	bIsLeftMouseDown = true;
 
+	// 1. Ở CHẾ ĐỘ CON TRỎ TỰ DO (NONE): ƯU TIÊN RAYCAST TRỰC TIẾP VÀO ACTOR 3D (Độ chính xác 100%)
+	if (CurrentBrushMode == ETimberBrushMode::None)
+	{
+		FHitResult HitResult;
+		if (GetHitResultUnderCursor(ECC_Visibility, false, HitResult))
+		{
+			if (AActor* HitActor = HitResult.GetActor())
+			{
+				if (ATimberBuildingBase* Building = Cast<ATimberBuildingBase>(HitActor))
+				{
+					SelectBuilding(Building);
+					return;
+				}
+			}
+		}
+	}
+
+	// 2. CÁC CHẾ ĐỘ KHÁC (PaintPath, Demolish, PlaceBuilding) HOẶC FALLBACK: DÙNG GRID MATH
 	FVector WorldHitPos;
 	if (GetCursorGridCoord(CurrentHoverGroundCoord, WorldHitPos))
 	{
@@ -388,6 +407,11 @@ void ATimberPlayerController::OnLeftMouseDown()
 			ExecuteBrushAction(CurrentHoverGroundCoord);
 			LastProcessedCoord = CurrentHoverGroundCoord;
 		}
+	}
+	else if (CurrentBrushMode == ETimberBrushMode::None)
+	{
+		// Click ra ngoài khoảng không vũ trụ -> Hủy chọn công trình
+		DeselectBuilding();
 	}
 }
 
@@ -497,6 +521,29 @@ void ATimberPlayerController::ExecuteBrushAction(const FIntVector& TargetCoord)
 {
 	switch (CurrentBrushMode)
 	{
+	case ETimberBrushMode::None:
+		{
+			// Ở chế độ con trỏ tự do: Click chuột trái vào công trình để mở bảng Inspector
+			if (ATimberGridManager* Grid = GetGridManager())
+			{
+				const FIntVector SpaceCoord = FIntVector(TargetCoord.X, TargetCoord.Y, TargetCoord.Z + 1);
+				ATimberBuildingBase* HitBuilding = Grid->GetBuildingAt(SpaceCoord);
+				if (!HitBuilding)
+				{
+					HitBuilding = Grid->GetBuildingAt(TargetCoord);
+				}
+
+				if (HitBuilding)
+				{
+					SelectBuilding(HitBuilding);
+				}
+				else
+				{
+					DeselectBuilding();
+				}
+			}
+		}
+		break;
 	case ETimberBrushMode::PaintPath:
 		ExecutePaintPath(TargetCoord);
 		break;
@@ -814,4 +861,114 @@ void ATimberPlayerController::ClearHologramPreview()
 		HologramPreviewActor->Destroy();
 		HologramPreviewActor = nullptr;
 	}
+}
+
+void ATimberPlayerController::DebugBeavers(int32 Level)
+{
+	TArray<AActor*> FoundBeavers;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABeaverAgent::StaticClass(), FoundBeavers);
+
+	for (AActor* Actor : FoundBeavers)
+	{
+		if (ABeaverAgent* Beaver = Cast<ABeaverAgent>(Actor))
+		{
+			Beaver->SetDebugLevel(Level);
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[BEAVER DEBUG] Đã chuyển DebugLevel = %d cho toàn bộ %d chú Hải ly trong Level!"), Level, FoundBeavers.Num());
+}
+
+void ATimberPlayerController::SelectBuilding(ATimberBuildingBase* Building)
+{
+	if (SelectedBuildingActor.IsValid())
+	{
+		SelectedBuildingActor->SetWorkAreaVisible(false);
+	}
+
+	SelectedBuildingActor = Building;
+
+	if (SelectedBuildingActor.IsValid())
+	{
+		// Cập nhật lại toàn bộ trạng thái kết nối đường đi tức thời để UI hiển thị chính xác 100%
+		if (ATimberGridManager* Grid = GetGridManager())
+		{
+			Grid->UpdateAllBuildingsConnectionStatus();
+		}
+
+		SelectedBuildingActor->SetWorkAreaVisible(true);
+
+		// Tạo hoặc hiển thị Widget Building Inspector nếu có cấu hình Class
+		if (BuildingInspectorWidgetClass && !BuildingInspectorWidgetInstance)
+		{
+			BuildingInspectorWidgetInstance = CreateWidget<UUserWidget>(this, BuildingInspectorWidgetClass);
+			if (BuildingInspectorWidgetInstance)
+			{
+				BuildingInspectorWidgetInstance->AddToViewport(15);
+			}
+		}
+
+		if (BuildingInspectorWidgetInstance)
+		{
+			BuildingInspectorWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("🔍 [INSPECTOR] Đã chọn công trình: '%s' (Đã kết nối đường: %s)"),
+			*SelectedBuildingActor->BuildingName,
+			SelectedBuildingActor->bIsConnectedToDistrict ? TEXT("CÓ (True)") : TEXT("KHÔNG (False)"));
+	}
+	else
+	{
+		DeselectBuilding();
+	}
+}
+
+void ATimberPlayerController::DeselectBuilding()
+{
+	if (SelectedBuildingActor.IsValid())
+	{
+		SelectedBuildingActor->SetWorkAreaVisible(false);
+		SelectedBuildingActor = nullptr;
+	}
+
+	if (BuildingInspectorWidgetInstance)
+	{
+		BuildingInspectorWidgetInstance->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
+bool ATimberPlayerController::AddWorkerToSelectedBuilding()
+{
+	if (!SelectedBuildingActor.IsValid() || !SelectedBuildingActor->IsWorkplace())
+	{
+		return false;
+	}
+
+	// Tìm 1 chú Hải ly đang Unemployed gần nhất trong Level
+	TArray<AActor*> FoundBeavers;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABeaverAgent::StaticClass(), FoundBeavers);
+
+	for (AActor* Actor : FoundBeavers)
+	{
+		if (ABeaverAgent* Beaver = Cast<ABeaverAgent>(Actor))
+		{
+			if (Beaver->CurrentProfession == EBeaverProfession::Unemployed)
+			{
+				return SelectedBuildingActor->AddWorker(Beaver);
+			}
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("⚠️ [NO UNEMPLOYED] Không còn Hải ly nào đang rảnh rỗi (Unemployed) để tuyển dụng!"));
+	return false;
+}
+
+bool ATimberPlayerController::RemoveWorkerFromSelectedBuilding()
+{
+	if (!SelectedBuildingActor.IsValid() || !SelectedBuildingActor->IsWorkplace())
+	{
+		return false;
+	}
+
+	return SelectedBuildingActor->RemoveWorker();
 }

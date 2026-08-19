@@ -32,6 +32,15 @@ public:
 	int32 StoredWood = 0;
 
 	// ==========================================
+	// UI INSPECTOR OVERRIDES
+	// ==========================================
+
+	virtual bool IsStorageFacility() const override { return true; }
+	virtual int32 GetMaxStorageCapacity() const override { return MaxCapacity; }
+	virtual int32 GetCurrentStoredAmount() const override { return StoredWood; }
+	virtual int32 StoreResource(int32 Amount) override { return DepositWood(Amount); }
+
+	// ==========================================
 	// INVENTORY API
 	// ==========================================
 

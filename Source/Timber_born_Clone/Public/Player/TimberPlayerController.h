@@ -50,6 +50,38 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|UI")
 	TObjectPtr<UUserWidget> BuildHUDWidgetInstance = nullptr;
 
+	/** Class UI Widget Bảng Thông Tin Công Trình (Building Inspector) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|UI")
+	TSubclassOf<UUserWidget> BuildingInspectorWidgetClass = nullptr;
+
+	/** Con trỏ tới Widget Inspector đang mở */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|UI")
+	TObjectPtr<UUserWidget> BuildingInspectorWidgetInstance = nullptr;
+
+	/** Công trình đang được người chơi click chọn để xem thông tin */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Timber|Selection")
+	TWeakObjectPtr<ATimberBuildingBase> SelectedBuildingActor;
+
+	// ==========================================
+	// BUILDING SELECTION & INSPECTOR API
+	// ==========================================
+
+	/** Chọn một công trình trên bản đồ để mở bảng thông tin Inspector */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Selection")
+	void SelectBuilding(ATimberBuildingBase* Building);
+
+	/** Bỏ chọn công trình hiện tại và đóng bảng Inspector */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Selection")
+	void DeselectBuilding();
+
+	/** Tuyển 1 thợ vào công trình đang chọn */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Selection")
+	bool AddWorkerToSelectedBuilding();
+
+	/** Cho thôi việc 1 thợ ở công trình đang chọn */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Selection")
+	bool RemoveWorkerFromSelectedBuilding();
+
 	// ==========================================
 	// HUD TOOL SELECTORS (BLUEPRINT CALLABLE)
 	// ==========================================
@@ -74,8 +106,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Timber|Tools")
 	void RotateBuildingClockwise();
 
+	/** Lệnh Console Debug Hải ly: 0 = Tắt, 1 = Hiện State Text, 2 = Hiện State + Dải Line A* */
+	UFUNCTION(Exec, Category = "Timber|Debug")
+	void DebugBeavers(int32 Level = 1);
+
 	// ==========================================
-	// RAYCAST & VALIDATION QUERIES
+	// CHỌN CÔNG CỤ TỪ GIAO DIỆN (UI HUD BINDINGS)
 	// ==========================================
 
 	/** Bắn tia Raycast từ vị trí Cursor chuột để xác định ô Grid mặt đất */

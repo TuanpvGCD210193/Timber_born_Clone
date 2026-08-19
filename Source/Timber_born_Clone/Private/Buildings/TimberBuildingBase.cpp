@@ -233,7 +233,7 @@ void ATimberBuildingBase::AdvanceBuildProgress(float WorkDeltaTime)
 	}
 }
 
-FIntVector ATimberBuildingBase::GetDoorGridCoord() const
+ATimberGridManager* ATimberBuildingBase::GetGridManager() const
 {
 	if (!CachedGridManager.IsValid())
 	{
@@ -244,9 +244,23 @@ FIntVector ATimberBuildingBase::GetDoorGridCoord() const
 		}
 	}
 
-	if (CachedGridManager.IsValid() && DoorArrowComponent)
+	return CachedGridManager.Get();
+}
+
+FIntVector ATimberBuildingBase::GetDoorGridCoord() const
+{
+	if (ATimberGridManager* Grid = GetGridManager())
 	{
-		return CachedGridManager->WorldLocationToGridCoord(DoorArrowComponent->GetComponentLocation());
+		// 1. Nếu DoorArrowComponent đang có vị trí thế giới hợp lệ
+		if (DoorArrowComponent && !DoorArrowComponent->GetRelativeLocation().IsZero())
+		{
+			return Grid->WorldLocationToGridCoord(DoorArrowComponent->GetComponentLocation());
+		}
+
+		// 2. Tính toán chính xác theo Origin + Góc xoay Actor Rotation
+		const FVector LocalDoorOffset = CalcDoorArrowLocalOffset();
+		const FVector WorldDoorPos = GetActorTransform().TransformPosition(LocalDoorOffset);
+		return Grid->WorldLocationToGridCoord(WorldDoorPos);
 	}
 
 	return OriginGridCoord + DoorRelativeCoord;

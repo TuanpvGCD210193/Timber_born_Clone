@@ -1,139 +1,211 @@
 // Copyright (c) 2026 Timberborn Clone Project. All Rights Reserved.
 
 #include "Timber_born_Clone/Public/Buildings/TimberLumberjackFlag.h"
+#include "Timber_born_Clone/Public/Beavers/BeaverAgent.h"
 #include "Timber_born_Clone/Public/Grid/TimberGridManager.h"
+#include "DrawDebugHelpers.h"
 
 ATimberLumberjackFlag::ATimberLumberjackFlag()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
 	BuildingName = TEXT("Lumberjack Flag");
+	BuildingDescription = TEXT("Employs a lumberjack that cuts trees in the surrounding area.");
 	FootprintSize = FIntPoint(1, 1);
 	DoorRelativeCoord = FIntVector(0, 0, 0);
-	WoodCost = 3;
-	BuildingState = EBuildingState::Ghost_Valid;
+	WoodCost = 3; // 3 Gỗ để xây trại đốn gỗ
+	BuildingState = EBuildingState::UnderConstruction;
 
 	WorkRadius = 10;
 	MaxWorkers = 1;
-	CurrentAssignedWorkers = 0;
-	LocalWoodBufferCapacity = 5;
-	CurrentLocalWood = 0;
+	bIsWorkAreaVisible = false;
 }
 
-bool ATimberLumberjackFlag::AssignWorker()
+void ATimberLumberjackFlag::Tick(float DeltaTime)
 {
-	if (CurrentAssignedWorkers < MaxWorkers)
+	Super::Tick(DeltaTime);
+
+	// Vẽ dải đường viền xanh bao quanh khu vực làm việc nếu đang được người chơi chọn
+	if (bIsWorkAreaVisible)
 	{
-		CurrentAssignedWorkers++;
-		UE_LOG(LogTemp, Log, TEXT("ATimberLumberjackFlag: Đã tiếp nhận 1 thợ đốn gỗ Hải ly (Công nhân: %d / %d)."),
-			CurrentAssignedWorkers, MaxWorkers);
-		return true;
+		DrawWorkAreaBounds();
 	}
-	return false;
 }
 
-bool ATimberLumberjackFlag::UnassignWorker()
+bool ATimberLumberjackFlag::AddWorker(ABeaverAgent* Beaver)
 {
-	if (CurrentAssignedWorkers > 0)
-	{
-		CurrentAssignedWorkers--;
-		UE_LOG(LogTemp, Log, TEXT("ATimberLumberjackFlag: Đã hủy 1 thợ đốn gỗ Hải ly (Công nhân: %d / %d)."),
-			CurrentAssignedWorkers, MaxWorkers);
-		return true;
-	}
-	return false;
-}
-
-bool ATimberLumberjackFlag::HasWorker() const
-{
-	return CurrentAssignedWorkers > 0;
-}
-
-int32 ATimberLumberjackFlag::AddHarvestedWood(int32 Amount)
-{
-	if (Amount <= 0)
-	{
-		return 0;
-	}
-
-	const int32 OldWood = CurrentLocalWood;
-	CurrentLocalWood = FMath::Clamp(CurrentLocalWood + Amount, 0, LocalWoodBufferCapacity);
-	const int32 Added = CurrentLocalWood - OldWood;
-
-	UE_LOG(LogTemp, Log, TEXT("ATimberLumberjackFlag: Đã gom +%d Gỗ vào Flag (Tồn đệm: %d / %d Gỗ)."),
-		Added, CurrentLocalWood, LocalWoodBufferCapacity);
-
-	return Added;
-}
-
-int32 ATimberLumberjackFlag::TakeWoodFromBuffer(int32 Amount)
-{
-	if (Amount <= 0)
-	{
-		return 0;
-	}
-
-	const int32 OldWood = CurrentLocalWood;
-	CurrentLocalWood = FMath::Clamp(CurrentLocalWood - Amount, 0, LocalWoodBufferCapacity);
-	const int32 Taken = OldWood - CurrentLocalWood;
-
-	return Taken;
-}
-
-bool ATimberLumberjackFlag::FindNearestHarvestableTree(const ATimberGridManager* GridManager, FIntVector& OutTreeCoord) const
-{
-	if (!GridManager || !IsFullyBuilt())
+	if (!Beaver)
 	{
 		return false;
 	}
 
-	const FIntVector FlagCoord = OriginGridCoord;
-	float BestDistSq = MAX_flt;
-	bool bFound = false;
-	FIntVector ClosestTree = FIntVector::ZeroValue;
-
-	const int32 MinX = FMath::Max(0, FlagCoord.X - WorkRadius);
-	const int32 MaxX = FMath::Min(GridManager->GridSizeX - 1, FlagCoord.X + WorkRadius);
-	const int32 MinY = FMath::Max(0, FlagCoord.Y - WorkRadius);
-	const int32 MaxY = FMath::Min(GridManager->GridSizeY - 1, FlagCoord.Y + WorkRadius);
-
-	for (int32 X = MinX; X <= MaxX; ++X)
+	// Đảm bảo không vượt quá số lượng công nhân tối đa (MaxWorkers = 1)
+	if (AssignedWorkerBeavers.Num() >= MaxWorkers)
 	{
-		for (int32 Y = MinY; Y <= MaxY; ++Y)
-		{
-			// Kiểm tra khoảng cách 2D trong bán kính hình tròn WorkRadius
-			const float Dist2DSq = FMath::Square((float)(X - FlagCoord.X)) + FMath::Square((float)(Y - FlagCoord.Y));
-			if (Dist2DSq > FMath::Square((float)WorkRadius))
-			{
-				continue;
-			}
+		return false;
+	}
 
-			// Quét các tầng Z từ mặt đất lên đỉnh
-			for (int32 Z = 0; Z < GridManager->GridSizeZ; ++Z)
+	// Xóa các con trỏ null/stale nếu có
+	AssignedWorkerBeavers.RemoveAll([](const TObjectPtr<ABeaverAgent>& Ptr) { return !IsValid(Ptr); });
+
+	if (!AssignedWorkerBeavers.Contains(Beaver))
+	{
+		AssignedWorkerBeavers.Add(Beaver);
+		Beaver->AssignWorkplace(this);
+		UE_LOG(LogTemp, Warning, TEXT("🌲 [LUMBERJACK FLAG] Đã tuyển Hải ly '%s' vào làm thợ đốn gỗ! (Tổng thợ: %d/%d)"),
+			*Beaver->BeaverName, AssignedWorkerBeavers.Num(), MaxWorkers);
+		return true;
+	}
+
+	return false;
+}
+
+bool ATimberLumberjackFlag::RemoveWorker(ABeaverAgent* Beaver)
+{
+	// Xóa các con trỏ null/stale
+	AssignedWorkerBeavers.RemoveAll([](const TObjectPtr<ABeaverAgent>& Ptr) { return !IsValid(Ptr); });
+
+	if (AssignedWorkerBeavers.Num() == 0)
+	{
+		return false;
+	}
+
+	if (Beaver)
+	{
+		if (AssignedWorkerBeavers.Remove(Beaver) > 0)
+		{
+			Beaver->ClearWorkplace();
+			UE_LOG(LogTemp, Warning, TEXT("🌲 [LUMBERJACK FLAG] Đã cho Hải ly '%s' thôi việc!"), *Beaver->BeaverName);
+			return true;
+		}
+	}
+	else
+	{
+		// Nếu không truyền Beaver cụ thể -> Cho thôi việc Hải ly cuối cùng trong danh sách
+		TObjectPtr<ABeaverAgent> LastWorker = AssignedWorkerBeavers.Pop();
+		if (IsValid(LastWorker))
+		{
+			LastWorker->ClearWorkplace();
+			UE_LOG(LogTemp, Warning, TEXT("🌲 [LUMBERJACK FLAG] Đã cho thôi việc 1 Hải ly! (Còn lại: %d/%d)"),
+				AssignedWorkerBeavers.Num(), MaxWorkers);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void ATimberLumberjackFlag::SetWorkAreaVisible(bool bVisible)
+{
+	bIsWorkAreaVisible = bVisible;
+}
+
+bool ATimberLumberjackFlag::IsCoordInsideWorkRadius(const FIntVector& TargetCoord) const
+{
+	const int32 Dx = FMath::Abs(TargetCoord.X - OriginGridCoord.X);
+	const int32 Dy = FMath::Abs(TargetCoord.Y - OriginGridCoord.Y);
+
+	// Kiểm tra phạm vi Chebyshev / Manhattan bounding box trong bán kính WorkRadius
+	return (Dx <= WorkRadius && Dy <= WorkRadius);
+}
+
+bool ATimberLumberjackFlag::FindNearestMatureTreeInWorkRadius(const FVector& FromLocation, FIntVector& OutTreeCoord) const
+{
+	ATimberGridManager* Grid = GetGridManager();
+	if (!Grid)
+	{
+		return false;
+	}
+
+	const FIntVector FromCoord = Grid->WorldLocationToGridCoord(FromLocation);
+
+	int32 BestDistance = MAX_int32;
+	bool bFound = false;
+
+	// Quét toàn bộ các ô trong bán kính hình vuông [-WorkRadius, +WorkRadius]
+	for (int32 Dx = -WorkRadius; Dx <= WorkRadius; ++Dx)
+	{
+		for (int32 Dy = -WorkRadius; Dy <= WorkRadius; ++Dy)
+		{
+			const int32 CheckX = OriginGridCoord.X + Dx;
+			const int32 CheckY = OriginGridCoord.Y + Dy;
+
+			// Tìm ô đất đặc cao nhất tại cột (X, Y)
+			FIntVector GroundCoord;
+			if (Grid->GetTopSolidGridCoordAt(CheckX, CheckY, GroundCoord))
 			{
-				FTimberCell Cell;
-				if (GridManager->GetCell(FIntVector(X, Y, Z), Cell))
+				// Kiểm tra ô phía trên mặt đất có phải là Cây Trưởng Thành (TreeMature)
+				const FIntVector TreeSpaceCoord = FIntVector(CheckX, CheckY, GroundCoord.Z + 1);
+
+				if (Grid->IsValidGridCoord(TreeSpaceCoord))
 				{
-					if (Cell.BlockType == ETimberBlockType::TreeMature || Cell.TreeStage == ETreeGrowthStage::Mature)
+					FTimberCell Cell;
+					if (Grid->GetCell(TreeSpaceCoord, Cell) && Cell.BlockType == ETimberBlockType::TreeMature)
 					{
-						const float TotalDistSq = Dist2DSq + FMath::Square((float)(Z - FlagCoord.Z));
-						if (TotalDistSq < BestDistSq)
+						// Tính khoảng cách có trọng số Manhattan tới vị trí Hải ly (ưu tiên cùng tầng Z trước)
+						const int32 Dist = FMath::Abs(TreeSpaceCoord.X - FromCoord.X) +
+						                   FMath::Abs(TreeSpaceCoord.Y - FromCoord.Y) +
+						                   FMath::Abs(TreeSpaceCoord.Z - FromCoord.Z) * 2;
+
+						if (Dist < BestDistance)
 						{
-							BestDistSq = TotalDistSq;
-							ClosestTree = FIntVector(X, Y, Z);
+							BestDistance = Dist;
+							OutTreeCoord = TreeSpaceCoord;
 							bFound = true;
 						}
-						break; // Mỗi cột (X, Y) chỉ có tối đa 1 cây
 					}
 				}
 			}
 		}
 	}
 
-	if (bFound)
+	return bFound;
+}
+
+void ATimberLumberjackFlag::DrawWorkAreaBounds()
+{
+	ATimberGridManager* Grid = GetGridManager();
+	if (!Grid)
 	{
-		OutTreeCoord = ClosestTree;
-		UE_LOG(LogTemp, Log, TEXT("ATimberLumberjackFlag: Đã tìm thấy Cây Trưởng Thành gần nhất tại [%d, %d, %d] (Khoảng cách: %.1f ô)."),
-			OutTreeCoord.X, OutTreeCoord.Y, OutTreeCoord.Z, FMath::Sqrt(BestDistSq));
+		return;
 	}
 
-	return bFound;
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const int32 MinX = OriginGridCoord.X - WorkRadius;
+	const int32 MaxX = OriginGridCoord.X + WorkRadius;
+	const int32 MinY = OriginGridCoord.Y - WorkRadius;
+	const int32 MaxY = OriginGridCoord.Y + WorkRadius;
+
+	const FColor BoundColor = FColor(0, 255, 200); // Xanh ngọc phát sáng (Cyan)
+
+	// Hàm lambda lấy tọa độ 3D bám sát theo độ cao gờ đất thực tế của ô
+	auto GetGroundTopPos = [Grid](int32 X, int32 Y) -> FVector
+	{
+		FIntVector GroundCoord;
+		if (Grid->GetTopSolidGridCoordAt(X, Y, GroundCoord))
+		{
+			return Grid->GridCoordToWorldLocation(GroundCoord, true) + FVector(0.0f, 0.0f, 52.0f);
+		}
+		return Grid->GridCoordToWorldLocation(FIntVector(X, Y, 0), true) + FVector(0.0f, 0.0f, 52.0f);
+	};
+
+	// Vẽ 4 cạnh của dải viền xanh bao quanh toàn bộ khu vực làm việc
+	// Cạnh 1 & 2: Dọc theo trục X (MinY và MaxY)
+	for (int32 X = MinX; X < MaxX; ++X)
+	{
+		DrawDebugLine(World, GetGroundTopPos(X, MinY), GetGroundTopPos(X + 1, MinY), BoundColor, false, 0.05f, 0, 3.5f);
+		DrawDebugLine(World, GetGroundTopPos(X, MaxY), GetGroundTopPos(X + 1, MaxY), BoundColor, false, 0.05f, 0, 3.5f);
+	}
+
+	// Cạnh 3 & 4: Dọc theo trục Y (MinX và MaxX)
+	for (int32 Y = MinY; Y < MaxY; ++Y)
+	{
+		DrawDebugLine(World, GetGroundTopPos(MinX, Y), GetGroundTopPos(MinX, Y + 1), BoundColor, false, 0.05f, 0, 3.5f);
+		DrawDebugLine(World, GetGroundTopPos(MaxX, Y), GetGroundTopPos(MaxX, Y + 1), BoundColor, false, 0.05f, 0, 3.5f);
+	}
 }

@@ -96,6 +96,54 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber")
 	FIntVector DoorRelativeCoord = FIntVector(0, 1, 0);
 
+	/** Mô tả công dụng của công trình hiển thị trên bảng UI Inspector */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber")
+	FString BuildingDescription = TEXT("A standard building structure.");
+
+	// ==========================================
+	// UI INSPECTOR VIRTUAL INTERFACE (TÁI SỬ DỤNG CHO MỌI NHÀ)
+	// ==========================================
+
+	/** Công trình này có phải là nơi làm việc (Workplace) có thể tuyển thợ không? */
+	UFUNCTION(BlueprintPure, Category = "Timber|Inspector")
+	virtual bool IsWorkplace() const { return false; }
+
+	/** Số lượng công nhân tối đa có thể làm việc */
+	UFUNCTION(BlueprintPure, Category = "Timber|Inspector")
+	virtual int32 GetMaxWorkers() const { return 0; }
+
+	/** Số lượng công nhân hiện đang làm việc */
+	UFUNCTION(BlueprintPure, Category = "Timber|Inspector")
+	virtual int32 GetCurrentWorkers() const { return 0; }
+
+	/** Tuyển thêm 1 công nhân (Hải ly) */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Inspector")
+	virtual bool AddWorker(class ABeaverAgent* Beaver) { return false; }
+
+	/** Cho thôi việc 1 công nhân */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Inspector")
+	virtual bool RemoveWorker(class ABeaverAgent* Beaver = nullptr) { return false; }
+
+	/** Công trình này có chức năng chứa kho hàng không? */
+	UFUNCTION(BlueprintPure, Category = "Timber|Inspector")
+	virtual bool IsStorageFacility() const { return false; }
+
+	/** Sức chứa kho tối đa */
+	UFUNCTION(BlueprintPure, Category = "Timber|Inspector")
+	virtual int32 GetMaxStorageCapacity() const { return 0; }
+
+	/** Lượng tài nguyên hiện có trong kho */
+	UFUNCTION(BlueprintPure, Category = "Timber|Inspector")
+	virtual int32 GetCurrentStoredAmount() const { return 0; }
+
+	/** Nhận thêm tài nguyên vào kho (+Gỗ). Trả về số lượng thực tế nhận được. */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Inspector")
+	virtual int32 StoreResource(int32 Amount) { return 0; }
+
+	/** Bật/Tắt hiển thị vùng bán kính làm việc (Work Area Bounds) */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Inspector")
+	virtual void SetWorkAreaVisible(bool bVisible) {}
+
 	// ==========================================
 	// CONSTRUCTION & RESOURCE ECONOMY
 	// ==========================================
@@ -230,6 +278,9 @@ public:
 	/** Nút bấm Editor: Đặt lại móng về trạng thái ban đầu để test lại từ đầu */
 	UFUNCTION(CallInEditor, Category = "Timber", meta = (DisplayName = "🔄 Reset Móng 0% (Debug)"))
 	void Editor_ResetConstruction();
+
+	/** Lấy con trỏ GridManager trong thế giới */
+	ATimberGridManager* GetGridManager() const;
 
 protected:
 	/** Cập nhật Material và trạng thái ẩn/hiện của các Mesh Component tương ứng với BuildingState */

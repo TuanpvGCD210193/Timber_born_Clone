@@ -320,16 +320,18 @@ Mục này cung cấp tài liệu kỹ thuật chuyên sâu và các nguyên lý
     - `Step 3.5.2`: [XONG] C++ Implementation Logic (Tự động kích hoạt Mũi tên 3D chỉ hướng cửa, xoay 90° phím `R`, tự động ẩn khi lát đường đè lên ô cửa, ép buộc kiểm tra đường chạm đúng ô cửa).
     - `Step 3.5.3`: [XONG] Tối Ưu Refactor Codebase & Sửa Lỗi Demolish (Xóa code thừa, bảo vệ Nhà Chính không thể xóa, khớp chính xác 100% Instance ISM theo vị trí 3D thực tế khi xóa đường).
     - `Phase 3 Retrospective`: [XONG] Tổng kết toàn diện Hệ thống Công trình, Móng giàn giáo, Cọ vẽ và Kết nối mạng lưới.
-- **Phase 4: Hải Ly AI & Vòng Lặp Khai Thác Gỗ [TIẾP THEO]**
-  - `Step 4.1`: Beaver AI Controller & State Machine:
-    - `Step 4.1.1`: C++ Header & Architecture (`ABeaverAgent`, `EBeaverState`).
-    - `Step 4.1.2`: C++ Implementation Logic (FSM AI, Overlap va chạm, Tìm đường A*).
-    - `Step 4.1.3`: Hands-on UE Editor Setup & Testing (Tạo Blueprint `BP_BeaverCharacter`, gán Mesh/Animation).
-  - `Step 4.2`: Khai Thác Cây, Vận Chuyển Gỗ & Tích Trữ Vào Kho:
-    - `Step 4.2.1`: C++ Header (`IWorkTaskInterface`, Task đốn gỗ & vận chuyển).
-    - `Step 4.2.2`: C++ Implementation Logic (Tìm cây $\rightarrow$ Đốn gỗ $\rightarrow$ Vác về kho).
-    - `Step 4.2.3`: Hands-on UE Editor Setup & Testing (Testing chu trình vận hành thực chiến trên Viewport).
-  - `Step 4.3`: Chu Trình Nghỉ Ngơi & Quản Lý Dân Số:
+- **Phase 4: Hải Ly AI & Vòng Lặp Khai Thác Gỗ [ĐANG THỰC HIỆN]**
+  - `Step 4.1`: Beaver AI Controller & State Machine [ĐANG THỰC HIỆN]:
+    - `Step 4.1.1`: [XONG] C++ Header & Architecture (`ABeaverAgent`, `EBeaverState`, `EBeaverProfession`, `FBeaverAttributeConfig`, Console command `DebugBeavers`).
+    - `Step 4.1.2`: [XONG] C++ Implementation Logic (FSM AI Machine, Grid Linear Interpolation Movement, bám Waypoints A*, tăng tốc +50% trên DirtPath, Debug Visual 3D Level 1/2).
+    - `Step 4.1.3`: [TIẾP THEO] Hands-on UE Editor Setup & Testing (Tạo Blueprint `BP_BeaverCharacter`, gán Mesh/Capsule Overlap, kéo vào Map test lệnh console `DebugBeavers 1/2` và di chuyển A*).
+  - `Step 4.2`: Khai Thác Cây, Vận Chuyển Gỗ & Tích Trữ Vào Kho [ĐANG THỰC HIỆN]:
+    - `Step 4.2.1`: [XONG] C++ Header & Architecture (UI Inspector Virtual Interface `IsWorkplace`, `AddWorker`, Vùng xanh `WorkRadius`, Thuật toán lọc cây gần nhất, Chống kẹt overlap).
+    - `Step 4.2.2a`: [XONG] C++ Logic Trại Đốn Gỗ & Viền Xanh 3D (Quét cây trong bán kính, vẽ dải viền xanh `DrawWorkAreaBounds`, quản lý thợ `AddWorker`/`RemoveWorker`).
+    - `Step 4.2.2b`: [XONG] C++ Logic Hải Ly Đốn Cây & Chuyển Hóa Gốc Cây (A* tới ô cạnh cây chống kẹt, FSM đếm ngược 3s có % tiến độ dưới `[WORKING]`, chuyển `TreeMature` $\rightarrow$ `TreeStump`, hiện gỗ trên lưng).
+    - `Step 4.2.2c`: [XONG] C++ Logic Tìm Kho Gần Nhất & Vận Chuyển (Tìm kho gần nhất còn chỗ chứa, A* vác gỗ về nạp kho, khép kín vòng lặp tự động tìm cây tiếp theo).
+    - `Step 4.2.3`: [XONG] Hands-on UE Editor Setup & Testing (Tạo Widget `WBP_BuildingInspector`, click chọn công trình mở bảng + bật viền xanh, tuyển thợ test thực chiến, đóng gói tài liệu Blueprint Graph).
+  - `Step 4.3`: Chu Trình Nghỉ Ngơi & Quản Lý Dân Số [TIẾP THEO]:
     - `Step 4.3.1`: C++ Header (Nhu cầu thể lực & Trú ẩn tại Beaver Lodge).
     - `Step 4.3.2`: C++ Implementation Logic (Hải ly về nhà ngủ khi đêm xuống & sinh sản).
     - `Step 4.3.3`: Hands-on UE Editor Setup & Testing (Quản lý dân số và test chu kỳ ngày/đêm).

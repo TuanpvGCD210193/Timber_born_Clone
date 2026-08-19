@@ -44,6 +44,15 @@ public:
 	int32 MaxDistrictRangeSteps = 70;
 
 	// ==========================================
+	// UI INSPECTOR OVERRIDES
+	// ==========================================
+
+	virtual bool IsStorageFacility() const override { return true; }
+	virtual int32 GetMaxStorageCapacity() const override { return MaxWoodStorage; }
+	virtual int32 GetCurrentStoredAmount() const override { return CurrentWoodStock; }
+	virtual int32 StoreResource(int32 Amount) override { return AddWood(Amount); }
+
+	// ==========================================
 	// STORAGE API
 	// ==========================================
 
