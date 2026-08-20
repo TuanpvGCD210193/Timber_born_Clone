@@ -229,6 +229,13 @@ public:
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions")
 	void GenerateNaturalTerrainAndForests();
 
+	/**
+	 * Phủ thông minh Biome Cỏ, Vách Đá và Rừng Cây Hữu Cơ lên KHUÔN MAP HIỆN TẠI:
+	 * Bảo toàn 100% độ cao đồi núi bậc thang hiện tại, chỉ thay đổi bề mặt và cắm cây!
+	 */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions", meta = (DisplayName = "🌲 Populate Forest & Biomes on Existing Map"))
+	void PopulateForestAndBiomesOnExistingMap();
+
 	/** Lưu trữ bền vững dữ liệu ô lưới hiện tại vào Actor / Level Package */
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions")
 	void SaveTerrainData();
@@ -236,6 +243,45 @@ public:
 	/** Phục hồi và tái tạo lại địa hình từ dữ liệu đã lưu */
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Grid Actions")
 	void LoadTerrainData();
+
+	// ==========================================
+	// LEVEL DESIGN & HAND-CRAFTED MAP BAKING (FEAT 1.6)
+	// ==========================================
+
+	/** Tag nhận diện tùy chọn (Nếu để trống thì sẽ tự động quét tất cả các StaticMesh khớp với BlockMeshConfigs) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Level Design", meta = (DisplayName = "Hand-Crafted Block Tag Filter"))
+	FName HandCraftedTagFilter = NAME_None;
+
+	/** Tự động xóa các StaticMeshActor rời rạc trên Level sau khi đã nướng (Bake) thành công vào ISM */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Level Design", meta = (DisplayName = "Auto Delete Actors After Baking"))
+	bool bAutoDeleteHandPlacedActorsAfterBaking = true;
+
+	/**
+	 * Quét toàn bộ các StaticMeshActor được đặt thủ công trên Viewport,
+	 * tự động lượng tử hóa tọa độ thế giới sang ô lưới (X, Y, Z),
+	 * gộp vào hệ thống ISM chung và lưu vĩnh viễn vào Map dữ liệu.
+	 */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Level Design", meta = (DisplayName = "🔨 Bake Hand-Crafted Blocks to Grid"))
+	void BakeHandCraftedBlocksToGrid();
+
+	/** Đối chiếu StaticMesh của Actor để nhận diện chính xác đó là loại Block nào (Cliff, Grass, Dirt, Tree...) */
+	bool IdentifyBlockTypeFromMesh(UStaticMesh* Mesh, ETimberBlockType& OutType) const;
+
+	// ==========================================
+	// MULTI-SNAPSHOT MAP PRESETS (FEAT 1.7)
+	// ==========================================
+
+	/** File Data Asset Bản Đồ đang chọn để Lưu / Nạp */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Map Presets", meta = (DisplayName = "Active Map Preset"))
+	TObjectPtr<class UTimberMapPreset> ActiveMapPreset;
+
+	/** Đóng gói và lưu cứng toàn bộ dữ liệu địa hình hiện tại vào File Data Asset đã chọn */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Map Presets", meta = (DisplayName = "💾 Save Current Map to Preset"))
+	void SaveToMapPreset();
+
+	/** Nạp dữ liệu từ File Data Asset và hồi sinh toàn bộ địa hình lên Viewport trong 0.001s */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Timber|Map Presets", meta = (DisplayName = "🔄 Load Map from Preset"))
+	void LoadFromMapPreset();
 
 	// ==========================================
 	// SAVED DATA PERSISTENCE

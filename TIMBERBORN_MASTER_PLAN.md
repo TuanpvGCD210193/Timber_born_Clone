@@ -252,6 +252,45 @@ Mục này cung cấp tài liệu kỹ thuật chuyên sâu và các nguyên lý
 
 ---
 
+## 📋 5. LỘ TRÌNH TRIỂN KHAI MICRO-STEPS (ROADMAP)
+
+- **Phase 1: Địa hình Grid, Rừng cây & Khối Cơ Bản [HOÀN THÀNH 100%]**
+  - `Step 1.1`: [XONG] Khởi tạo Cấu trúc thư mục Public/Private và Content.
+  - `Step 1.2`: [XONG] Core Grid Data (`FTimberCell`, `ETimberBlockType`, `ATimberGridManager`).
+  - `Step 1.3`: Refactor Thuật Toán Sinh Địa Hình Đa Khối Hữu Cơ & Persistence:
+    - `Step 1.3.1`: [XONG] Thuật toán Cao nguyên 2-3 Tầng Xếp Chồng & Vách Đá Lồi Lõm So Le + Map Seed.
+    - `Step 1.3.2`: [XONG] Phân bổ Bề Mặt Hữu Cơ (Cỏ/Đất/Đá) + Đỉnh Đồi Là Khối Đá + Walkable (chênh 1 block).
+    - `Step 1.3.3`: [XONG] Thuật toán Sinh Cây Phân Cấp Mật Độ (Dày trên Cỏ, Thưa trên Đất, 0% trên Đá).
+    - `Step 1.3.4`: [XONG] Tính năng Lưu Bản Đồ (Save/Load Terrain Persistence) giữ nguyên địa hình khi Rebuild.
+  - `Step 1.4`: [XONG] Quản lý Vòng đời Sinh trưởng của Cây (Stump $\rightarrow$ Sapling $\rightarrow$ Mature).
+  - `Phase 1 Retrospective`: [XONG] Tổng kết mã nguồn, Review Kiến trúc & Đánh giá năng lực Phase 1.
+- **Phase 2: Mạng Lưới Đường Đi & Thuật Toán A* Pathfinding [HOÀN THÀNH 100%]**
+  - `Step 2.1`: [XONG] Cấu trúc Dữ liệu Đường Đi & Path Network Graph.
+  - `Step 2.2`: [XONG] Thuật toán A* Pathfinding 3D.
+  - `Step 2.3`: [XONG] Hệ thống Kết Nối Đường Đi & Mạng Lưới Công Trình (District Reachability BFS).
+  - `Step 2.4`: [XONG] Thiết Lập UE Editor, Tạo Mesh/Material Đường Đi & Visual Testing Trên Viewport.
+  - `Phase 2 Retrospective`: [XONG] Tổng kết Mã nguồn, Đồ thị Mạng lưới & Thuật toán A* Pathfinding.
+- **Phase 3: Hệ Thống 3 Công Trình & Cơ Chế Móng Xây Dựng (Construction Site) [TIẾP THEO]**
+  - `Step 3.1`: Base Building Actor & Construction Site System [HOÀN THÀNH 100%]:
+    - `Step 3.1.1`: [XONG] C++ Header & Architecture (Khai báo `EBuildingState`, `ATimberBuildingBase`, Footprint, Door Coord, Wood Cost, Hologram & Mesh Components).
+    - `Step 3.1.2`: [XONG] C++ Implementation Logic & Live In-Editor Sync (Máy trạng thái `SetBuildingState`, `DeliverWood`, `OnConstruction`, `PostEditChangeProperty`).
+    - `Step 3.1.3`: [XONG] Hands-on UE Editor Setup (Tạo Material `M_Hologram_Valid`, `M_Hologram_Invalid`, `M_Scaffold`, tạo Blueprint `BP_BuildingBaseTest`).
+    - `Step 3.1.4`: [XONG] Hands-on Visual Testing Chuyên Biệt Trên Viewport (Kéo thả, đổi trạng thái thời gian thực, kiểm tra 4 hình thái công trình).
+  - `Step 3.2`: Triển khai 3 Công Trình Cốt Lõi (District Center, Storage, Lumberjack Flag) [HOÀN THÀNH 100%]:
+    - `Step 3.2.1`: [XONG] C++ Header & Architecture (`ATimberDistrictCenter`, `ATimberStorage`, `ATimberLumberjackFlag`).
+    - `Step 3.2.2`: [XONG] C++ Implementation Logic (Sức chứa kho, Slot công nhân, Quét cây trong bán kính).
+    - `Step 3.2.3`: [XONG] Hands-on UE Editor Setup & Testing (Tạo 3 Blueprint `BP_DistrictCenter`, `BP_Storage`, `BP_LumberjackFlag`, gán Mesh và kiểm thử trên Viewport).
+  - `Step 3.3`: Hệ Thống Cung Ứng Vật Liệu Xây Dựng (Hauling & Build Progress) [HOÀN THÀNH 100%]:
+    - `Step 3.3.1`: [XONG] C++ Header & Architecture (`FHaulJob`, `EHaulJobType`, `EHaulJobPriority`, Hauling APIs).
+    - `Step 3.3.2`: [XONG] C++ Implementation Logic (Cung ứng gỗ thi công móng, thanh tiến độ xây, tự động hoàn thiện).
+    - `Step 3.3.3`: [XONG] Hands-on UE Editor Setup & Testing (Nút CallInEditor thử nghiệm giao gỗ & hoàn thiện công trình trực tiếp trên Viewport).
+  - `Step 3.4`: Công cụ In-Editor & Runtime Brush + HUD Xây Dựng Tương Tác Chuột [HOÀN THÀNH 100%]:
+    - `Step 3.4.1`: [XONG] C++ Header & Architecture (`ETimberBrushMode`, `ATimberPlayerController`, Raycast Grid Picking, Hover Hologram Preview, Thuật toán kiểm tra mặt bằng $N \times M$, APIs Lát đường / Phá hủy / Đặt móng).
+    - `Step 3.4.2`: [XONG] C++ Implementation Logic (Raycast 3D Cursor, Hologram Hover thời gian thực Xanh/Đỏ, Phím tắt `R` xoay 90°, Logic Lát đường / Phá hủy đa năng / Đặt móng `Scaffold`).
+    - `Step 3.4.3`: [XONG] Hands-on UE Editor Setup — Thiết Kế UI Widget Blueprint (`WBP_SimpleBuildHUD` 5 nút ở đáy màn hình, binding sự kiện Click tới Controller, setup `BP_TimberPlayerController` & `BP_TimberGameMode`).
+    - `Step 3.4.4`: [XONG] Hands-on Runtime Viewport Testing & Grid Standardization (Chuẩn hóa `BaseHeight = 1`, cơ chế Drag-to-Build Kéo thả Ghost Preview dải đường trước khi thả chuột xây hàng loạt).
+---
+
 ### 🌟 C. TỔNG KẾT PHASE 3: HỆ THỐNG CÔNG TRÌNH, MÓNG XÂY DỰNG, CÔNG CỤ CỌ VẼ & KẾT NỐI MẠNG LƯỚI (HOÀN THÀNH 100%)
 
 #### 1. Kiến Trúc Vòng Đời Công Trình & Cơ Chế Móng (Building State Machine & Construction Lifecycle)
@@ -289,6 +328,15 @@ Mục này cung cấp tài liệu kỹ thuật chuyên sâu và các nguyên lý
     - `Step 1.3.3`: [XONG] Thuật toán Sinh Cây Phân Cấp Mật Độ (Dày trên Cỏ, Thưa trên Đất, 0% trên Đá).
     - `Step 1.3.4`: [XONG] Tính năng Lưu Bản Đồ (Save/Load Terrain Persistence) giữ nguyên địa hình khi Rebuild.
   - `Step 1.4`: [XONG] Quản lý Vòng đời Sinh trưởng của Cây (Stump $\rightarrow$ Sapling $\rightarrow$ Mature).
+  - `Feat 1.6`: [XONG] Hybrid Level Design & Hand-Crafted Map Baking (Quy trình dựng Map nghệ thuật thủ công trong Editor kết hợp Gen khung thô + Bake vào Grid ISM 100% Native + Scale Bounding Box + Batch Perf 0.001s).
+  - `Feat 1.7`: [XONG] Multi-Snapshot Map Presets & Data Asset Persistence (Hệ thống Lưu Cứng & Khôi Phục Bản Đồ theo Slot Data Asset độc lập):
+    - `Feat 1.7.1`: [XONG] C++ Header & Sub-Class Data Asset (`UTimberMapPreset : public UPrimaryDataAsset`).
+    - `Feat 1.7.2`: [XONG] C++ Implementation Logic (Ủy quyền Save/Load sang Data Asset, nút Call-In-Editor `💾 Save to Map Preset` & `🔄 Load from Map Preset`).
+    - `Feat 1.7.3`: [XONG] Hands-on UE Editor Setup & Testing (Tạo Data Asset `DA_GrandCanyon_Map01`, Lưu cứng vĩnh viễn map hiện tại & kiểm thử khôi phục 1-click).
+  - `Feat 1.8`: [XONG] Smart Biome & Eco-Forest Population on Existing Map (Thuật toán phủ Cỏ, Vách Đá & Rừng cây hữu cơ lên khuôn địa hình thủ công giữ nguyên 100% độ cao):
+    - `Feat 1.8.1`: [XONG] C++ Header & Architecture (Khai báo hàm Call-In-Editor `PopulateForestAndBiomesOnExistingMap`).
+    - `Feat 1.8.2`: [XONG] C++ Implementation Logic (Quét Heightmap hiện tại, Toán học Vùng trũng & Perlin Noise, Rải cụm rừng cây tươi `TreeMature` trên nền Cỏ, Batch GPU Render 0.001s).
+    - `Feat 1.8.3`: [XONG] Hands-on UE Editor Testing (Nút Call-In-Editor phủ rừng, thử nghiệm thay đổi Seed và kiểm chứng độ cao map giữ nguyên 100%).
   - `Phase 1 Retrospective`: [XONG] Tổng kết mã nguồn, Review Kiến trúc & Đánh giá năng lực Phase 1.
 - **Phase 2: Mạng Lưới Đường Đi & Thuật Toán A* Pathfinding [HOÀN THÀNH 100%]**
   - `Step 2.1`: [XONG] Cấu trúc Dữ liệu Đường Đi & Path Network Graph.
@@ -320,21 +368,17 @@ Mục này cung cấp tài liệu kỹ thuật chuyên sâu và các nguyên lý
     - `Step 3.5.2`: [XONG] C++ Implementation Logic (Tự động kích hoạt Mũi tên 3D chỉ hướng cửa, xoay 90° phím `R`, tự động ẩn khi lát đường đè lên ô cửa, ép buộc kiểm tra đường chạm đúng ô cửa).
     - `Step 3.5.3`: [XONG] Tối Ưu Refactor Codebase & Sửa Lỗi Demolish (Xóa code thừa, bảo vệ Nhà Chính không thể xóa, khớp chính xác 100% Instance ISM theo vị trí 3D thực tế khi xóa đường).
     - `Phase 3 Retrospective`: [XONG] Tổng kết toàn diện Hệ thống Công trình, Móng giàn giáo, Cọ vẽ và Kết nối mạng lưới.
-- **Phase 4: Hải Ly AI & Vòng Lặp Khai Thác Gỗ [ĐANG THỰC HIỆN]**
-  - `Step 4.1`: Beaver AI Controller & State Machine [ĐANG THỰC HIỆN]:
+- **Phase 4: Hải Ly AI & Vòng Lặp Khai Thác Gỗ [TẠM THỜI ĐÓNG GÓI - PENDING]**
+  - `Step 4.1`: Beaver AI Controller & State Machine [XONG]:
     - `Step 4.1.1`: [XONG] C++ Header & Architecture (`ABeaverAgent`, `EBeaverState`, `EBeaverProfession`, `FBeaverAttributeConfig`, Console command `DebugBeavers`).
     - `Step 4.1.2`: [XONG] C++ Implementation Logic (FSM AI Machine, Grid Linear Interpolation Movement, bám Waypoints A*, tăng tốc +50% trên DirtPath, Debug Visual 3D Level 1/2).
-    - `Step 4.1.3`: [TIẾP THEO] Hands-on UE Editor Setup & Testing (Tạo Blueprint `BP_BeaverCharacter`, gán Mesh/Capsule Overlap, kéo vào Map test lệnh console `DebugBeavers 1/2` và di chuyển A*).
-  - `Step 4.2`: Khai Thác Cây, Vận Chuyển Gỗ & Tích Trữ Vào Kho [ĐANG THỰC HIỆN]:
+    - `Step 4.1.3`: [XONG] Hands-on UE Editor Setup & Testing (`BP_BeaverCharacter`, gán Mesh/Capsule Overlap, test lệnh console `DebugBeavers 1/2` và di chuyển A*).
+  - `Step 4.2`: Khai Thác Cây, Vận Chuyển Gỗ & Tích Trữ Vào Kho [PENDING TẠM THỜI]:
     - `Step 4.2.1`: [XONG] C++ Header & Architecture (UI Inspector Virtual Interface `IsWorkplace`, `AddWorker`, Vùng xanh `WorkRadius`, Thuật toán lọc cây gần nhất, Chống kẹt overlap).
     - `Step 4.2.2a`: [XONG] C++ Logic Trại Đốn Gỗ & Viền Xanh 3D (Quét cây trong bán kính, vẽ dải viền xanh `DrawWorkAreaBounds`, quản lý thợ `AddWorker`/`RemoveWorker`).
     - `Step 4.2.2b`: [XONG] C++ Logic Hải Ly Đốn Cây & Chuyển Hóa Gốc Cây (A* tới ô cạnh cây chống kẹt, FSM đếm ngược 3s có % tiến độ dưới `[WORKING]`, chuyển `TreeMature` $\rightarrow$ `TreeStump`, hiện gỗ trên lưng).
     - `Step 4.2.2c`: [XONG] C++ Logic Tìm Kho Gần Nhất & Vận Chuyển (Tìm kho gần nhất còn chỗ chứa, A* vác gỗ về nạp kho, khép kín vòng lặp tự động tìm cây tiếp theo).
     - `Step 4.2.3`: [XONG] Hands-on UE Editor Setup & Testing (Tạo Widget `WBP_BuildingInspector`, click chọn công trình mở bảng + bật viền xanh, tuyển thợ test thực chiến, đóng gói tài liệu Blueprint Graph).
-  - `Step 4.3`: Chu Trình Nghỉ Ngơi & Quản Lý Dân Số [TIẾP THEO]:
-    - `Step 4.3.1`: C++ Header (Nhu cầu thể lực & Trú ẩn tại Beaver Lodge).
-    - `Step 4.3.2`: C++ Implementation Logic (Hải ly về nhà ngủ khi đêm xuống & sinh sản).
-    - `Step 4.3.3`: Hands-on UE Editor Setup & Testing (Quản lý dân số và test chu kỳ ngày/đêm).
 - **Phase 5: Camera RTS, Game Speed & UI HUD**
   - `Step 5.1`: RTS Camera Controller:
     - `Step 5.1.1`: C++ Header (`ATimberRTSCamera`, Pan, Orbit, Zoom).

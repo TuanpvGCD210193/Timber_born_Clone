@@ -5,6 +5,9 @@
 #include "Timber_born_Clone/Public/Buildings/TimberBuildingBase.h"
 #include "Timber_born_Clone/Public/Buildings/TimberDistrictCenter.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/StaticMeshActor.h"
+#include "Kismet/GameplayStatics.h"
+#include "Timber_born_Clone/Public/Grid/TimberMapPreset.h"
 
 #if WITH_EDITOR
 #include "Misc/ScopedSlowTask.h"
@@ -986,6 +989,263 @@ void ATimberGridManager::GenerateNaturalTerrainAndForests()
 	UE_LOG(LogTemp, Log, TEXT("[====================] 100%% - Hoàn tất Batch ISM Rendering & Đã lưu dữ liệu vào Actor!"));
 }
 
+void ATimberGridManager::PopulateForestAndBiomesOnExistingMap()
+{
+	if (GridCells.Num() == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ [SMART POPULATE] Ô lưới đang rỗng! Hãy nạp map trước khi phủ Biome & Cây!"));
+		return;
+	}
+
+#if WITH_EDITOR
+	FScopedSlowTask SlowTask(4.0f, FText::FromString(TEXT("Đang phủ Biome Cỏ, Vách Đá & Rừng cây lên Map hiện tại...")));
+	SlowTask.MakeDialog();
+#endif
+
+	// Khởi tạo Random Stream theo MapSeed (Seed > 0: Tái tạo cố định; Seed = 0: Ngẫu nhiên)
+	const int32 EffectiveSeed = (TerrainConfig.MapSeed != 0) ? TerrainConfig.MapSeed : FMath::RandRange(1, 9999999);
+	FRandomStream RandStream(EffectiveSeed);
+	UE_LOG(LogTemp, Log, TEXT("🌲 [SMART POPULATE] Đang phủ Biome với Seed: %d (Bảo toàn 100%% độ cao hiện tại)"), EffectiveSeed);
+
+	// ========================================================
+	// BƯỚC 1 (25%): QUÉT VÀ PHÂN TÍCH HEIGHTMAP THỰC TẾ CỦA LEVEL HIỆN TẠI
+	// ========================================================
+#if WITH_EDITOR
+	SlowTask.EnterProgressFrame(1.0f, FText::FromString(TEXT("Bước 1/4: Quét Heightmap và tìm đỉnh bề mặt...")));
+#endif
+
+	TArray<int32> TopHeightMap;
+	TopHeightMap.Init(0, GridSizeX * GridSizeY);
+
+	int32 MinFoundHeight = GridSizeZ;
+	int32 MaxFoundHeight = 0;
+
+	for (int32 Y = 0; Y < GridSizeY; ++Y)
+	{
+		for (int32 X = 0; X < GridSizeX; ++X)
+		{
+			int32 ColumnTop = 0;
+			for (int32 Z = GridSizeZ - 1; Z >= 0; --Z)
+			{
+				const int32 CellIdx = GetCellIndex(X, Y, Z);
+				const ETimberBlockType BType = GridCells[CellIdx].BlockType;
+
+				// Nếu là Cây cũ, làm sạch để rải lại rừng cây mới
+				if (BType == ETimberBlockType::TreeMature || BType == ETimberBlockType::TreeSapling || BType == ETimberBlockType::TreeStump)
+				{
+					GridCells[CellIdx].BlockType = ETimberBlockType::None;
+					GridCells[CellIdx].bIsWalkable = false;
+					GridCells[CellIdx].TreeStage = ETreeGrowthStage::None;
+					GridCells[CellIdx].TreeGrowthTimer = 0.0f;
+					continue;
+				}
+
+				if (BType != ETimberBlockType::None)
+				{
+					ColumnTop = Z + 1;
+					break;
+				}
+			}
+
+			TopHeightMap[X + Y * GridSizeX] = ColumnTop;
+
+			if (ColumnTop > 0)
+			{
+				MinFoundHeight = FMath::Min(MinFoundHeight, ColumnTop);
+				MaxFoundHeight = FMath::Max(MaxFoundHeight, ColumnTop);
+			}
+		}
+	}
+
+	const float AvgHeight = (MinFoundHeight + MaxFoundHeight) * 0.5f;
+
+	// ========================================================
+	// BƯỚC 2 (50%): PHỦ BIOME THÔNG MINH (CỎ THUNG LŨNG, VÁCH ĐÁ & ĐẤT NÂU)
+	// ========================================================
+#if WITH_EDITOR
+	SlowTask.EnterProgressFrame(1.0f, FText::FromString(TEXT("Bước 2/4: Phủ Biome Cỏ, Vách Đá và Đất Đồi...")));
+#endif
+
+	for (int32 Y = 0; Y < GridSizeY; ++Y)
+	{
+		for (int32 X = 0; X < GridSizeX; ++X)
+		{
+			const int32 TopH = TopHeightMap[X + Y * GridSizeX];
+			if (TopH <= 0)
+			{
+				continue;
+			}
+
+			// Kiểm tra độ lồi lõm so với 4 ô xung quanh để phát hiện Vách Dựng Đứng
+			bool bIsCliffEdge = false;
+			const int32 Neighbors[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+			for (int32 i = 0; i < 4; ++i)
+			{
+				const int32 NX = X + Neighbors[i][0];
+				const int32 NY = Y + Neighbors[i][1];
+				if (IsValidCoord(NX, NY, 0))
+				{
+					const int32 NeighborTopH = TopHeightMap[NX + NY * GridSizeX];
+					if (TopH - NeighborTopH >= 2) // Chênh lệch >= 2 block là vách đứng!
+					{
+						bIsCliffEdge = true;
+						break;
+					}
+				}
+			}
+
+			// Hàm nhiễu Perlin tần số thấp tạo các dải thung lũng cỏ uốn lượn tự nhiên
+			const float RawNoise = FMath::PerlinNoise2D(FVector2D(
+				X * TerrainConfig.NoiseScale + EffectiveSeed * 0.03f, 
+				Y * TerrainConfig.NoiseScale + EffectiveSeed * 0.03f
+			));
+			const float BiomeNoise = FMath::Clamp((RawNoise + 1.0f) * 0.5f, 0.0f, 1.0f);
+
+			for (int32 Z = 0; Z < TopH; ++Z)
+			{
+				const int32 CellIdx = GetCellIndex(X, Y, Z);
+
+				// Nếu là lớp bề mặt trên cùng
+				if (Z == TopH - 1)
+				{
+					if (bIsCliffEdge)
+					{
+						GridCells[CellIdx].BlockType = ETimberBlockType::Cliff; // Mép vách cao nguyên là Đá
+					}
+					else if (TopH <= AvgHeight)
+					{
+						// VÙNG TRŨNG THẤP & THUNG LŨNG: Phủ Cỏ xanh màu mỡ liền mạch
+						if (BiomeNoise < TerrainConfig.GrassRatio + 0.15f)
+						{
+							GridCells[CellIdx].BlockType = ETimberBlockType::Grass;
+						}
+						else
+						{
+							GridCells[CellIdx].BlockType = ETimberBlockType::Dirt;
+						}
+					}
+					else
+					{
+						// VÙNG CAO NGUYÊN TRÊN CAO: Phủ Đất khô hoặc Đá theo cấu hình
+						if (TerrainConfig.bHillTopAlwaysRock && TopH >= MaxFoundHeight - 1)
+						{
+							GridCells[CellIdx].BlockType = ETimberBlockType::Cliff;
+						}
+						else
+						{
+							GridCells[CellIdx].BlockType = ETimberBlockType::Dirt;
+						}
+					}
+
+					GridCells[CellIdx].bIsWalkable = true;
+				}
+				else
+				{
+					// Lớp thân và vách bên dưới
+					if (Z >= MinFoundHeight)
+					{
+						GridCells[CellIdx].BlockType = ETimberBlockType::Cliff; // Thân cao nguyên là Đá
+					}
+					else
+					{
+						GridCells[CellIdx].BlockType = ETimberBlockType::Dirt; // Lòng đất sâu
+					}
+					GridCells[CellIdx].bIsWalkable = false;
+				}
+			}
+		}
+	}
+
+	// ========================================================
+	// BƯỚC 3 (75%): RẢI CÁC CỤM RỪNG CÂY XANH TƯƠI HỮU CƠ (ECO-FOREST)
+	// ========================================================
+#if WITH_EDITOR
+	SlowTask.EnterProgressFrame(1.0f, FText::FromString(TEXT("Bước 3/4: Rải các cụm Rừng cây xanh tươi...")));
+#endif
+
+	for (int32 Cluster = 0; Cluster < ForestConfig.ClusterCount; ++Cluster)
+	{
+		const int32 Margin = ForestConfig.ClusterRadius + 1;
+		const int32 CenterX = RandStream.RandRange(Margin, FMath::Max(Margin, GridSizeX - Margin));
+		const int32 CenterY = RandStream.RandRange(Margin, FMath::Max(Margin, GridSizeY - Margin));
+
+		for (int32 OffY = -ForestConfig.ClusterRadius; OffY <= ForestConfig.ClusterRadius; ++OffY)
+		{
+			for (int32 OffX = -ForestConfig.ClusterRadius; OffX <= ForestConfig.ClusterRadius; ++OffX)
+			{
+				const int32 TargetX = CenterX + OffX;
+				const int32 TargetY = CenterY + OffY;
+
+				if (!IsValidCoord(TargetX, TargetY, 0))
+				{
+					continue;
+				}
+
+				const float Dist = FVector2D::Distance(FVector2D(TargetX, TargetY), FVector2D(CenterX, CenterY));
+				if (Dist <= ForestConfig.ClusterRadius)
+				{
+					const int32 TopH = TopHeightMap[TargetX + TargetY * GridSizeX];
+					if (TopH <= 0 || TopH >= GridSizeZ - 1)
+					{
+						continue;
+					}
+
+					// Lấy thông tin khối bề mặt ngay dưới chân cây
+					const int32 SurfaceIdx = GetCellIndex(TargetX, TargetY, TopH - 1);
+					const ETimberBlockType SurfaceType = GridCells[SurfaceIdx].BlockType;
+
+					// Phân cấp tỷ lệ mọc cây theo loại khối bề mặt:
+					float BiomeMultiplier = 0.0f;
+					if (SurfaceType == ETimberBlockType::Grass)
+					{
+						BiomeMultiplier = ForestConfig.GrassTreeDensity; // Dày đặc trên Cỏ xanh (0.90)
+					}
+					else if (SurfaceType == ETimberBlockType::Dirt)
+					{
+						BiomeMultiplier = ForestConfig.DirtTreeDensity; // Thưa thớt trên Đất khô (0.25)
+					}
+					else
+					{
+						BiomeMultiplier = ForestConfig.RockTreeDensity; // Tuyệt đối 0.0% trên Đá (0.00)
+					}
+
+					if (BiomeMultiplier <= 0.0f)
+					{
+						continue; // Bỏ qua nếu là Đá (Cliff)
+					}
+
+					// Tính toán mật độ theo khoảng cách từ tâm cụm rừng
+					const float DensityT = Dist / static_cast<float>(ForestConfig.ClusterRadius);
+					const float TargetDensity = FMath::Lerp(ForestConfig.CenterDensity, ForestConfig.EdgeDensity, DensityT) * BiomeMultiplier;
+
+					if (RandStream.FRand() < TargetDensity)
+					{
+						const int32 TreeZ = TopH; // Cắm cây ngay trên bề mặt
+						const int32 TreeIdx = GetCellIndex(TargetX, TargetY, TreeZ);
+
+						GridCells[TreeIdx].BlockType = ETimberBlockType::TreeMature;
+						GridCells[TreeIdx].bIsWalkable = false; // Thân cây chặn đường
+						GridCells[TreeIdx].TreeStage = ETreeGrowthStage::Mature;
+						GridCells[TreeIdx].TreeGrowthTimer = 0.0f;
+					}
+				}
+			}
+		}
+	}
+
+	// ========================================================
+	// BƯỚC 4 (100%): BATCH RENDER GPU 0.001S & AUTO SAVE
+	// ========================================================
+#if WITH_EDITOR
+	SlowTask.EnterProgressFrame(1.0f, FText::FromString(TEXT("Bước 4/4: Nạp GPU Instances và Lưu bản đồ...")));
+#endif
+
+	SaveTerrainData();
+	LoadTerrainData();
+
+	UE_LOG(LogTemp, Warning, TEXT("🎉 [SMART POPULATE] HOÀN TẤT: Đã phủ Biome và Rừng cây thành công mà KHÔNG THAY ĐỔI 100%% độ cao map!"));
+}
+
 void ATimberGridManager::SaveTerrainData()
 {
 	SavedGridData = GridCells;
@@ -1329,5 +1589,258 @@ void ATimberGridManager::UpdateAllBuildingsConnectionStatus()
 
 		BuildingPtr->UpdateDistrictConnectionVisuals(bConnected);
 	}
+}
+
+bool ATimberGridManager::IdentifyBlockTypeFromMesh(UStaticMesh* Mesh, ETimberBlockType& OutType) const
+{
+	if (!Mesh)
+	{
+		return false;
+	}
+
+	// 1. Quét từ điển cấu hình BlockMeshConfigs đã gán trong Details Panel
+	for (const auto& Pair : BlockMeshConfigs)
+	{
+		if (Pair.Value.StaticMesh == Mesh)
+		{
+			OutType = Pair.Key;
+			return true;
+		}
+	}
+
+	// 2. Fallback nhận diện theo Tên của StaticMesh (nếu người dùng chưa gán vào BlockMeshConfigs)
+	const FString MeshName = Mesh->GetName().ToLower();
+
+	if (MeshName.Contains(TEXT("cliff")) || MeshName.Contains(TEXT("rock")) || MeshName.Contains(TEXT("stone")))
+	{
+		OutType = ETimberBlockType::Cliff;
+		return true;
+	}
+	if (MeshName.Contains(TEXT("grass")))
+	{
+		OutType = ETimberBlockType::Grass;
+		return true;
+	}
+	if (MeshName.Contains(TEXT("dirt")) || MeshName.Contains(TEXT("ground")) || MeshName.Contains(TEXT("soil")))
+	{
+		OutType = ETimberBlockType::Dirt;
+		return true;
+	}
+	if (MeshName.Contains(TEXT("tree")) || MeshName.Contains(TEXT("pine")) || MeshName.Contains(TEXT("birch")) || MeshName.Contains(TEXT("oak")))
+	{
+		OutType = ETimberBlockType::TreeMature;
+		return true;
+	}
+	if (MeshName.Contains(TEXT("path")) || MeshName.Contains(TEXT("road")))
+	{
+		OutType = ETimberBlockType::DirtPath;
+		return true;
+	}
+
+	return false;
+}
+
+void ATimberGridManager::BakeHandCraftedBlocksToGrid()
+{
+	if (GridCells.Num() == 0)
+	{
+		InitializeGrid();
+	}
+
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AStaticMeshActor::StaticClass(), FoundActors);
+
+	int32 AddedBlocksCount = 0;
+	int32 DeletedBlocksCount = 0;
+	TArray<AActor*> ActorsToDelete;
+
+	for (AActor* Actor : FoundActors)
+	{
+		if (!Actor || Actor == this)
+		{
+			continue;
+		}
+
+		AStaticMeshActor* SMA = Cast<AStaticMeshActor>(Actor);
+		if (!SMA || !SMA->GetStaticMeshComponent())
+		{
+			continue;
+		}
+
+		// Kiểm tra xem Actor có phải là "Cục Tẩy / Khối Xóa" không (Kiểm tra Tag, ActorLabel trên Outliner, và Tên Actor)
+		const FString TargetActorLabel = SMA->GetActorLabel();
+		const bool bIsDeleteAction = SMA->ActorHasTag(FName(TEXT("Delete"))) ||
+									SMA->ActorHasTag(FName(TEXT("DeleteBlock"))) ||
+									SMA->ActorHasTag(FName(TEXT("Demolish"))) ||
+									TargetActorLabel.Contains(TEXT("Delete"), ESearchCase::IgnoreCase) ||
+									SMA->GetName().Contains(TEXT("Delete"), ESearchCase::IgnoreCase);
+
+		// Nếu không phải là lệnh Xóa, thì kiểm tra bộ lọc Tag thông thường
+		if (!bIsDeleteAction && HandCraftedTagFilter != NAME_None && !SMA->ActorHasTag(HandCraftedTagFilter))
+		{
+			continue;
+		}
+
+		UStaticMesh* Mesh = SMA->GetStaticMeshComponent()->GetStaticMesh();
+		ETimberBlockType DetectedType = ETimberBlockType::None;
+
+		if (!bIsDeleteAction)
+		{
+			if (!IdentifyBlockTypeFromMesh(Mesh, DetectedType))
+			{
+				continue;
+			}
+		}
+
+		// 1. Tính toán Bounding Box (AABB) của Actor để quét toàn bộ thể tích Scale (X, Y, Z)
+		FVector BoxOrigin, BoxExtent;
+		SMA->GetActorBounds(false, BoxOrigin, BoxExtent);
+
+		// Quy đổi phạm vi thế giới sang tọa độ ô lưới Min và Max
+		const FVector MinWorldPos = BoxOrigin - BoxExtent + FVector(10.0f, 10.0f, 10.0f); // Bù nhẹ 10cm chống sai số biên
+		const FVector MaxWorldPos = BoxOrigin + BoxExtent - FVector(10.0f, 10.0f, 10.0f);
+
+		const FIntVector MinCoord = WorldLocationToGridCoord(MinWorldPos);
+		const FIntVector MaxCoord = WorldLocationToGridCoord(MaxWorldPos);
+
+		const int32 StartX = FMath::Clamp(FMath::Min(MinCoord.X, MaxCoord.X), 0, GridSizeX - 1);
+		const int32 EndX   = FMath::Clamp(FMath::Max(MinCoord.X, MaxCoord.X), 0, GridSizeX - 1);
+
+		const int32 StartY = FMath::Clamp(FMath::Min(MinCoord.Y, MaxCoord.Y), 0, GridSizeY - 1);
+		const int32 EndY   = FMath::Clamp(FMath::Max(MinCoord.Y, MaxCoord.Y), 0, GridSizeY - 1);
+
+		const int32 StartZ = FMath::Clamp(FMath::Min(MinCoord.Z, MaxCoord.Z), 0, GridSizeZ - 1);
+		const int32 EndZ   = FMath::Clamp(FMath::Max(MinCoord.Z, MaxCoord.Z), 0, GridSizeZ - 1);
+
+		// 2. Quét toàn bộ các ô nằm lọt trong thể tích khối Scale
+		for (int32 X = StartX; X <= EndX; ++X)
+		{
+			for (int32 Y = StartY; Y <= EndY; ++Y)
+			{
+				for (int32 Z = StartZ; Z <= EndZ; ++Z)
+				{
+					const FIntVector CurrentCoord(X, Y, Z);
+					const int32 CellIdx = GetCellIndexFromVector(CurrentCoord);
+
+					if (bIsDeleteAction)
+					{
+						// LỆNH XÓA (BATCH MEMORY UPDATE): Xóa dữ liệu ô lưới
+						if (GridCells[CellIdx].BlockType != ETimberBlockType::None)
+						{
+							GridCells[CellIdx].BlockType = ETimberBlockType::None;
+							GridCells[CellIdx].bIsWalkable = false;
+							GridCells[CellIdx].InstanceIndex = INDEX_NONE;
+							GridCells[CellIdx].TreeStage = ETreeGrowthStage::None;
+							GridCells[CellIdx].TreeGrowthTimer = 0.0f;
+							DeletedBlocksCount++;
+						}
+					}
+					else
+					{
+						// LỆNH ĐẶT MỚI (BATCH MEMORY UPDATE): Điền dữ liệu ô lưới
+						const bool bIsWalkable = (DetectedType == ETimberBlockType::Grass || 
+												 DetectedType == ETimberBlockType::Dirt || 
+												 DetectedType == ETimberBlockType::DirtPath);
+
+						GridCells[CellIdx].BlockType = DetectedType;
+						GridCells[CellIdx].bIsWalkable = bIsWalkable;
+						GridCells[CellIdx].TreeStage = (DetectedType == ETimberBlockType::TreeMature) ? ETreeGrowthStage::Mature : ETreeGrowthStage::None;
+						GridCells[CellIdx].TreeGrowthTimer = 0.0f;
+						AddedBlocksCount++;
+					}
+				}
+			}
+		}
+
+		if (bAutoDeleteHandPlacedActorsAfterBaking)
+		{
+			ActorsToDelete.Add(SMA);
+		}
+	}
+
+	// 3. Dọn dẹp các Actor rời rạc / Cục tẩy sau khi đã nướng vào bộ nhớ
+	for (AActor* ActorToDelete : ActorsToDelete)
+	{
+		if (IsValid(ActorToDelete))
+		{
+			ActorToDelete->Destroy();
+		}
+	}
+
+	// 4. Lưu trữ bền vững dữ liệu ô lưới vào Map .umap
+	SaveTerrainData();
+
+	// 5. TỐI ƯU HÓA GPU TỐI THƯỢNG: Nạp và vẽ toàn bộ Mesh Instances ra Viewport ngay lập tức (Batch Render - 0.001s!)
+	if (AddedBlocksCount > 0 || DeletedBlocksCount > 0)
+	{
+		LoadTerrainData();
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("⚡ [LEVEL DESIGN BATCH OPTIMIZED] BAKE THÀNH CÔNG: Đã thêm +%d | Đã đục/xóa -%d khối (Hiển thị 100%% trên Viewport)!"),
+		AddedBlocksCount, DeletedBlocksCount);
+}
+
+void ATimberGridManager::SaveToMapPreset()
+{
+	if (!ActiveMapPreset)
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ [MAP PRESET] LỖI: Chưa chọn 'Active Map Preset'! Hãy tạo một Data Asset 'UTimberMapPreset' trong Content Browser và kéo vào ô này trước!"));
+		return;
+	}
+
+	if (GridCells.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("⚠️ [MAP PRESET] CẢNH BÁO: Ô lưới hiện tại đang rỗng (0 cells), không có dữ liệu để lưu!"));
+		return;
+	}
+
+	// Đóng gói dữ liệu kích thước và toàn bộ mảng ô lưới vào Data Asset
+	ActiveMapPreset->GridSizeX = GridSizeX;
+	ActiveMapPreset->GridSizeY = GridSizeY;
+	ActiveMapPreset->GridSizeZ = GridSizeZ;
+	ActiveMapPreset->CellSize = CellSize;
+	ActiveMapPreset->PresetCells = GridCells;
+
+	// Đánh dấu Asset bị Dirty để Unreal Engine lưu bền vững vào file .uasset trên đĩa cứng
+	ActiveMapPreset->Modify();
+	ActiveMapPreset->MarkPackageDirty();
+
+	UE_LOG(LogTemp, Warning, TEXT("💾 [MAP PRESET] ĐÃ LƯU CỨNG THÀNH CÔNG %d Ô VÀO DATA ASSET: '%s' (File .uasset đã được bảo toàn vĩnh viễn)!"),
+		ActiveMapPreset->PresetCells.Num(), *ActiveMapPreset->GetName());
+}
+
+void ATimberGridManager::LoadFromMapPreset()
+{
+	if (!ActiveMapPreset)
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ [MAP PRESET] LỖI: Chưa chọn 'Active Map Preset' để nạp!"));
+		return;
+	}
+
+	if (ActiveMapPreset->PresetCells.Num() == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ [MAP PRESET] LỖI: Data Asset '%s' đang rỗng, chưa được lưu dữ liệu trước đó!"), *ActiveMapPreset->GetName());
+		return;
+	}
+
+	// 1. Đồng bộ lại kích thước lưới theo cấu hình của Preset
+	GridSizeX = ActiveMapPreset->GridSizeX;
+	GridSizeY = ActiveMapPreset->GridSizeY;
+	GridSizeZ = ActiveMapPreset->GridSizeZ;
+	CellSize  = ActiveMapPreset->CellSize;
+
+	// 2. Nạp dữ liệu vào ô lưới hiện tại và mảng sao lưu
+	GridCells = ActiveMapPreset->PresetCells;
+	SavedGridData = GridCells;
+
+	// 3. Tái tạo ngay lập tức 100% Mesh GPU ra Viewport trong 0.001s
+	LoadTerrainData();
+
+	// 4. Lưu trạng thái này vào Level Package
+	Modify();
+	MarkPackageDirty();
+
+	UE_LOG(LogTemp, Warning, TEXT("🎉 [MAP PRESET] ĐÃ HỒI SINH THÀNH CÔNG %d Ô TỪ PRESET: '%s' LÊN VIEWPORT TRONG 0.001s!"),
+		GridCells.Num(), *ActiveMapPreset->GetName());
 }
 
