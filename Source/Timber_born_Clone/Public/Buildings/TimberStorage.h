@@ -39,6 +39,7 @@ public:
 	virtual int32 GetMaxStorageCapacity() const override { return MaxCapacity; }
 	virtual int32 GetCurrentStoredAmount() const override { return StoredWood; }
 	virtual int32 StoreResource(int32 Amount) override { return DepositWood(Amount); }
+	virtual int32 WithdrawResource(int32 Amount) override { return WithdrawWood(Amount); }
 
 	// ==========================================
 	// INVENTORY API

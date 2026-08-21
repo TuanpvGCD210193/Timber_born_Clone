@@ -1,7 +1,11 @@
 #include "Timber_born_Clone/Public/Player/TimberPlayerController.h"
+#include "Timber_born_Clone/Public/Player/TimberRTSCamera.h"
 #include "Timber_born_Clone/Public/Grid/TimberGridManager.h"
 #include "Timber_born_Clone/Public/Buildings/TimberBuildingBase.h"
+#include "Timber_born_Clone/Public/Buildings/TimberDistrictCenter.h"
+#include "Timber_born_Clone/Public/Buildings/TimberStorage.h"
 #include "Timber_born_Clone/Public/Beavers/BeaverAgent.h"
+#include "Timber_born_Clone/Public/UI/TimberMasterHUDWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
@@ -27,14 +31,19 @@ void ATimberPlayerController::BeginPlay()
 	// Tìm và cache con trỏ tới TimberGridManager trong Level
 	GetGridManager();
 
-	// Tự động tạo và hiển thị thanh công cụ UI HUD ở đáy màn hình nếu đã gán Widget Class
-	if (BuildHUDWidgetClass)
+	// 1. Tự động sinh Master HUD Widget (hoặc fallback BuildHUDWidgetClass)
+	TSubclassOf<UUserWidget> TargetHUDClass = MasterHUDWidgetClass ? MasterHUDWidgetClass : BuildHUDWidgetClass;
+	if (TargetHUDClass)
 	{
-		BuildHUDWidgetInstance = CreateWidget<UUserWidget>(this, BuildHUDWidgetClass);
-		if (BuildHUDWidgetInstance)
+		UUserWidget* CreatedWidget = CreateWidget<UUserWidget>(this, TargetHUDClass);
+		if (CreatedWidget)
 		{
-			BuildHUDWidgetInstance->AddToViewport(0);
-			UE_LOG(LogTemp, Log, TEXT("ATimberPlayerController: Đã tạo và hiển thị BuildHUD thành công!"));
+			CreatedWidget->AddToViewport(0);
+			MasterHUDWidgetInstance = Cast<UTimberMasterHUDWidget>(CreatedWidget);
+			UE_LOG(LogTemp, Log, TEXT("ATimberPlayerController: Đã tạo và hiển thị MasterHUD thành công!"));
+			
+			// Cập nhật số liệu thống kê ban đầu lên HUD
+			UpdateMasterHUDStats();
 		}
 	}
 }
@@ -49,8 +58,9 @@ void ATimberPlayerController::SetupInputComponent()
 		InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &ATimberPlayerController::OnLeftMouseDown);
 		InputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, this, &ATimberPlayerController::OnLeftMouseUp);
 
-		// Chuột Phải (Right Click -> Hủy chọn công cụ)
+		// Chuột Phải (Right Click & Hold Drag Map)
 		InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &ATimberPlayerController::OnRightMouseDown);
+		InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &ATimberPlayerController::OnRightMouseUp);
 
 		// Phím R (Xoay công trình 90 độ)
 		InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ATimberPlayerController::OnRotateKeyPressed);
@@ -60,6 +70,45 @@ void ATimberPlayerController::SetupInputComponent()
 void ATimberPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
+
+	// ========================================================
+	// 1. XỬ LÝ KÉO MAP BẰNG CHUỘT PHẢI (TIMBERBORN RIGHT-CLICK DRAG PAN)
+	// ========================================================
+	if (bIsRightMousePressed)
+	{
+		float CurrentMouseX = 0.0f, CurrentMouseY = 0.0f;
+		if (GetMousePosition(CurrentMouseX, CurrentMouseY))
+		{
+			const FVector2D CurrentMousePos(CurrentMouseX, CurrentMouseY);
+			const FVector2D TotalDelta = CurrentMousePos - InitialRightClickPos;
+			const FVector2D FrameDelta = CurrentMousePos - LastMouseDragPos;
+			LastMouseDragPos = CurrentMousePos;
+
+			// Kiểm tra đã vượt ngưỡng để tính là Kéo map chưa
+			if (TotalDelta.Size() > RightMouseDragThreshold)
+			{
+				bHasRightMouseDragged = true;
+			}
+
+			if (bHasRightMouseDragged && !FrameDelta.IsNearlyZero())
+			{
+				APawn* ControlledPawn = GetPawn();
+				ATimberRTSCamera* RTSCam = Cast<ATimberRTSCamera>(ControlledPawn);
+				if (!RTSCam)
+				{
+					// Fallback tìm RTS Camera trong Level nếu chưa Possess
+					RTSCam = Cast<ATimberRTSCamera>(UGameplayStatics::GetActorOfClass(GetWorld(), ATimberRTSCamera::StaticClass()));
+				}
+
+				if (RTSCam)
+				{
+					// Rê chuột ngang (FrameDelta.X) -> Xoay Yaw Trái/Phải
+					// Rê chuột dọc (FrameDelta.Y) -> Xoay Pitch Ngẩng/Cúi
+					RTSCam->AddCameraRotationDelta(FrameDelta.X, FrameDelta.Y);
+				}
+			}
+		}
+	}
 
 	// Nếu không cầm công cụ nào thì tắt Hologram và không cần quét liên tục
 	if (CurrentBrushMode == ETimberBrushMode::None)
@@ -430,16 +479,38 @@ void ATimberPlayerController::OnLeftMouseUp()
 
 void ATimberPlayerController::OnRightMouseDown()
 {
-	if (bIsDraggingPath)
+	bIsRightMousePressed = true;
+	bHasRightMouseDragged = false;
+
+	// Lưu tọa độ chuột bắt đầu nhấn
+	float MouseX = 0.0f, MouseY = 0.0f;
+	if (GetMousePosition(MouseX, MouseY))
 	{
-		bIsDraggingPath = false;
-		CachedDragPathCoords.Empty();
-		UE_LOG(LogTemp, Log, TEXT("[BRUSH] Đã hủy thao tác kéo lát đường."));
+		InitialRightClickPos = FVector2D(MouseX, MouseY);
+		LastMouseDragPos = InitialRightClickPos;
 	}
-	else
+}
+
+void ATimberPlayerController::OnRightMouseUp()
+{
+	bIsRightMousePressed = false;
+
+	// Nếu người chơi KHÔNG kéo chuột (chỉ click nhanh chuột phải) -> Thực hiện Hủy chọn công cụ như cũ!
+	if (!bHasRightMouseDragged)
 	{
-		SelectTool_Deselect();
+		if (bIsDraggingPath)
+		{
+			bIsDraggingPath = false;
+			CachedDragPathCoords.Empty();
+			UE_LOG(LogTemp, Log, TEXT("[BRUSH] Đã hủy thao tác kéo lát đường."));
+		}
+		else
+		{
+			SelectTool_Deselect();
+		}
 	}
+
+	bHasRightMouseDragged = false;
 }
 
 void ATimberPlayerController::OnRotateKeyPressed()
@@ -971,4 +1042,70 @@ bool ATimberPlayerController::RemoveWorkerFromSelectedBuilding()
 	}
 
 	return SelectedBuildingActor->RemoveWorker();
+}
+
+void ATimberPlayerController::UpdateMasterHUDStats()
+{
+	if (!MasterHUDWidgetInstance || !GetWorld())
+	{
+		return;
+	}
+
+	// 1. TÍNH TỔNG SỐ GỖ VÀ SỨC CHỨA KHO TOÀN ĐỊNH CƯ
+	int32 TotalWoodStock = 0;
+	int32 TotalWoodCapacity = 0;
+
+	// Quét Nhà Chính
+	TArray<AActor*> DistrictCenters;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ATimberDistrictCenter::StaticClass(), DistrictCenters);
+	for (AActor* Actor : DistrictCenters)
+	{
+		if (ATimberDistrictCenter* DC = Cast<ATimberDistrictCenter>(Actor))
+		{
+			TotalWoodStock += DC->CurrentWoodStock;
+			TotalWoodCapacity += DC->MaxWoodStorage;
+		}
+	}
+
+	// Quét các Kho Lưu Trữ
+	TArray<AActor*> StorageBuildings;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ATimberStorage::StaticClass(), StorageBuildings);
+	for (AActor* Actor : StorageBuildings)
+	{
+		if (ATimberStorage* Store = Cast<ATimberStorage>(Actor))
+		{
+			TotalWoodStock += Store->StoredWood;
+			TotalWoodCapacity += Store->MaxCapacity;
+		}
+	}
+
+	// Đẩy thống kê gỗ xuống Master HUD
+	MasterHUDWidgetInstance->UpdateResourceDisplay(TotalWoodStock, TotalWoodCapacity);
+
+	// 2. TÍNH THỐNG KÊ DÂN SỐ & VIỆC LÀM HẢI LY
+	TArray<AActor*> AllBeavers;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABeaverAgent::StaticClass(), AllBeavers);
+
+	const int32 TotalBeaverCount = AllBeavers.Num();
+	int32 EmployedCount = 0;
+
+	for (AActor* Actor : AllBeavers)
+	{
+		if (ABeaverAgent* Beaver = Cast<ABeaverAgent>(Actor))
+		{
+			if (Beaver->CurrentProfession != EBeaverProfession::Unemployed)
+			{
+				EmployedCount++;
+			}
+		}
+	}
+
+	// Giới hạn dân số mặc định theo Nhà chính (10 Hải ly)
+	const int32 MaxPopCap = (DistrictCenters.Num() > 0) ? 10 : 0;
+
+	// Đẩy thống kê dân số xuống Master HUD
+	MasterHUDWidgetInstance->UpdatePopulationDisplay(TotalBeaverCount, EmployedCount, MaxPopCap);
+
+	// Đẩy trạng thái công cụ cọ vẽ hiện tại (để sáng viền nút)
+	MasterHUDWidgetInstance->UpdateToolDisplay(static_cast<uint8>(CurrentBrushMode));
 }

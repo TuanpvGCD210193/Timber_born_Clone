@@ -4,6 +4,7 @@
 #include "Timber_born_Clone/Public/Pathfinding/TimberAStar.h"
 #include "Timber_born_Clone/Public/Buildings/TimberBuildingBase.h"
 #include "Timber_born_Clone/Public/Buildings/TimberDistrictCenter.h"
+#include "Timber_born_Clone/Public/Buildings/TimberConstructionManager.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/StaticMeshActor.h"
 #include "Kismet/GameplayStatics.h"
@@ -53,6 +54,13 @@ void ATimberGridManager::OnConstruction(const FTransform& Transform)
 void ATimberGridManager::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Khởi tạo Sub-Class ConstructionManager chuyên trách
+	if (!ConstructionManager)
+	{
+		ConstructionManager = NewObject<UTimberConstructionManager>(this, TEXT("ConstructionManager"));
+		ConstructionManager->Initialize(this);
+	}
 
 	// Tự động phục hồi bản đồ đã lưu nếu có dữ liệu
 	if (SavedGridData.Num() > 0)
@@ -288,7 +296,8 @@ bool ATimberGridManager::IsBuildingConnectedToDistrict(const FIntVector& Buildin
 		return false;
 	}
 
-	return PathGraph->IsReachable(DistrictCenterDoorCoord, BuildingDoorCoord, OutPathDistance);
+	const FIntVector DCDoor = GetDistrictCenterDoorCoord();
+	return PathGraph->IsReachable(DCDoor, BuildingDoorCoord, OutPathDistance);
 }
 
 void ATimberGridManager::DrawDebugDistrictNetwork()
@@ -300,7 +309,8 @@ void ATimberGridManager::DrawDebugDistrictNetwork()
 		return;
 	}
 
-	const TArray<FIntVector> ReachableNodes = PathGraph->GetAllReachableNodes(DistrictCenterDoorCoord);
+	const FIntVector DCDoor = GetDistrictCenterDoorCoord();
+	const TArray<FIntVector> ReachableNodes = PathGraph->GetAllReachableNodes(DCDoor);
 
 	for (const FIntVector& NodeCoord : ReachableNodes)
 	{
@@ -317,7 +327,7 @@ void ATimberGridManager::DrawDebugDistrictNetwork()
 	}
 
 	// Đánh dấu ô cửa District Center bằng hộp phát sáng màu Magenta
-	const FVector DoorWorldPos = GridCoordToWorldLocation(DistrictCenterDoorCoord, true) + FVector(0, 0, 35.0f);
+	const FVector DoorWorldPos = GridCoordToWorldLocation(DCDoor, true) + FVector(0, 0, 35.0f);
 	DrawDebugBox(World, DoorWorldPos, FVector(25.0f, 25.0f, 25.0f), FColor::Magenta, false, 10.0f, 0, 4.0f);
 
 	UE_LOG(LogTemp, Log, TEXT("ATimberGridManager: Đã vẽ mạng lưới District Network gồm %d nút đường hợp lệ kết nối về District Center."), ReachableNodes.Num());
@@ -1462,20 +1472,40 @@ ATimberBuildingBase* ATimberGridManager::GetBuildingAt(const FIntVector& Coord) 
 	return nullptr;
 }
 
+FIntVector ATimberGridManager::GetDistrictCenterDoorCoord() const
+{
+	for (const TObjectPtr<ATimberBuildingBase>& BuildingPtr : RegisteredBuildings)
+	{
+		if (BuildingPtr && BuildingPtr->IsA<ATimberDistrictCenter>())
+		{
+			return BuildingPtr->GetDoorGridCoord();
+		}
+	}
+	return FIntVector::ZeroValue;
+}
+
 void ATimberGridManager::RegisterBuilding(ATimberBuildingBase* Building)
 {
 	if (Building && !RegisteredBuildings.Contains(Building))
 	{
 		RegisteredBuildings.Add(Building);
 
-		// Nếu là District Center, cập nhật ngay tọa độ cửa làm gốc phát tỏa mạng lưới
+		// Nếu là District Center, ghi nhận thông tin
 		if (ATimberDistrictCenter* DC = Cast<ATimberDistrictCenter>(Building))
 		{
-			DistrictCenterDoorCoord = DC->GetDoorGridCoord();
-			DistrictCenterCoord = DC->OriginGridCoord;
+			const FIntVector DCDoor = DC->GetDoorGridCoord();
 			UE_LOG(LogTemp, Log, TEXT("ATimberGridManager: Đã ghi nhận Nhà Chính tại (%d, %d, %d), Cửa tại (%d, %d, %d)."),
-				DistrictCenterCoord.X, DistrictCenterCoord.Y, DistrictCenterCoord.Z,
-				DistrictCenterDoorCoord.X, DistrictCenterDoorCoord.Y, DistrictCenterDoorCoord.Z);
+				DC->OriginGridCoord.X, DC->OriginGridCoord.Y, DC->OriginGridCoord.Z,
+				DCDoor.X, DCDoor.Y, DCDoor.Z);
+		}
+
+		// Nếu là Móng công trình đang chờ xây dựng -> Tự động ghi danh vào ConstructionManager
+		if (Building->BuildingState == EBuildingState::UnderConstruction)
+		{
+			if (ConstructionManager)
+			{
+				ConstructionManager->RegisterConstructionSite(Building);
+			}
 		}
 
 		UE_LOG(LogTemp, Log, TEXT("ATimberGridManager: Đã đăng ký công trình [%s] tại (%d, %d, %d)."),
@@ -1490,6 +1520,12 @@ void ATimberGridManager::UnregisterBuilding(ATimberBuildingBase* Building)
 	if (Building)
 	{
 		RegisteredBuildings.Remove(Building);
+
+		if (ConstructionManager)
+		{
+			ConstructionManager->UnregisterConstructionSite(Building);
+		}
+
 		UE_LOG(LogTemp, Log, TEXT("ATimberGridManager: Đã hủy đăng ký công trình [%s]."), *Building->BuildingName);
 
 		UpdateAllBuildingsConnectionStatus();
@@ -1534,11 +1570,6 @@ void ATimberGridManager::UpdateAllBuildingsConnectionStatus()
 			if (HasPathAt(Peri)) DCRoadNodes.AddUnique(Peri);
 			if (HasPathAt(FIntVector(Peri.X, Peri.Y, Peri.Z + 1))) DCRoadNodes.AddUnique(FIntVector(Peri.X, Peri.Y, Peri.Z + 1));
 		}
-	}
-	else
-	{
-		if (HasPathAt(DistrictCenterDoorCoord)) DCRoadNodes.Add(DistrictCenterDoorCoord);
-		if (HasPathAt(FIntVector(DistrictCenterDoorCoord.X, DistrictCenterDoorCoord.Y, DistrictCenterDoorCoord.Z + 1))) DCRoadNodes.Add(FIntVector(DistrictCenterDoorCoord.X, DistrictCenterDoorCoord.Y, DistrictCenterDoorCoord.Z + 1));
 	}
 
 	// 4. Cập nhật trạng thái kết nối cho từng công trình

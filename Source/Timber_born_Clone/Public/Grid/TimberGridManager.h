@@ -200,13 +200,9 @@ public:
 	// DISTRICT NETWORK & BUILDING CONNECTIVITY (STEP 2.3)
 	// ==========================================
 
-	/** Tọa độ gốc của Nhà Chính (District Center) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|District")
-	FIntVector DistrictCenterCoord = FIntVector::ZeroValue;
-
-	/** Tọa độ ô cửa ra vào của Nhà Chính (Nơi bắt đầu tỏa ra mạng lưới đường đi) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|District")
-	FIntVector DistrictCenterDoorCoord = FIntVector::ZeroValue;
+	/** Lấy tọa độ ô cửa ra vào của Nhà Chính thực tế trong thế giới */
+	UFUNCTION(BlueprintPure, Category = "Timber|District")
+	FIntVector GetDistrictCenterDoorCoord() const;
 
 	/**
 	 * Kiểm tra xem một công trình (thông qua tọa độ ô cửa của nó) có kết nối đường đi về District Center không
@@ -322,6 +318,14 @@ public:
 	/** Danh sách tất cả các công trình đang tồn tại trên bản đồ */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber")
 	TArray<TObjectPtr<ATimberBuildingBase>> RegisteredBuildings;
+
+	/** Sub-Class Chuyên trách Quản lý Xây dựng & Hàng đợi móng (Phase 4 - Step 4.3) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber")
+	TObjectPtr<class UTimberConstructionManager> ConstructionManager;
+
+	/** Lấy con trỏ tới ConstructionManager */
+	UFUNCTION(BlueprintPure, Category = "Timber|Buildings")
+	class UTimberConstructionManager* GetConstructionManager() const { return ConstructionManager; }
 
 	// ==========================================
 	// GETTERS & DEBUG

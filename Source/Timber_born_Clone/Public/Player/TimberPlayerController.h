@@ -42,13 +42,17 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Tool State")
 	int32 BuildingRotationAngle = 0;
 
-	/** Class UI Widget HUD xây dựng để tự động sinh ra khi BeginPlay */
+	/** Class UI Widget HUD xây dựng / Master HUD để tự động sinh ra khi BeginPlay */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|UI")
-	TSubclassOf<UUserWidget> BuildHUDWidgetClass = nullptr;
+	TSubclassOf<class UTimberMasterHUDWidget> MasterHUDWidgetClass = nullptr;
 
-	/** Con trỏ tới Widget HUD đang hiển thị trên màn hình */
+	/** Con trỏ tới Widget Master HUD đang hiển thị trên màn hình */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|UI")
-	TObjectPtr<UUserWidget> BuildHUDWidgetInstance = nullptr;
+	TObjectPtr<class UTimberMasterHUDWidget> MasterHUDWidgetInstance = nullptr;
+
+	/** Tương thích ngược với Blueprint cũ (BuildHUDWidgetClass) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|UI", meta = (DisplayName = "Deprecated: Build HUD Widget Class"))
+	TSubclassOf<UUserWidget> BuildHUDWidgetClass = nullptr;
 
 	/** Class UI Widget Bảng Thông Tin Công Trình (Building Inspector) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|UI")
@@ -61,6 +65,10 @@ public:
 	/** Công trình đang được người chơi click chọn để xem thông tin */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Timber|Selection")
 	TWeakObjectPtr<ATimberBuildingBase> SelectedBuildingActor;
+
+	/** Cập nhật thống kê toàn cảnh khu định cư (Gỗ trong kho, Dân số, Việc làm) lên Master HUD */
+	UFUNCTION(BlueprintCallable, Category = "Timber|UI")
+	void UpdateMasterHUDStats();
 
 	// ==========================================
 	// BUILDING SELECTION & INSPECTOR API
@@ -140,11 +148,38 @@ protected:
 	/** Nhả chuột trái: Dừng kéo vẽ đường */
 	void OnLeftMouseUp();
 
-	/** Nhấn chuột phải: Hủy chọn công cụ hiện tại */
+	/** Nhấn chuột phải: Chuẩn bị Kéo map hoặc Hủy chọn công cụ */
 	void OnRightMouseDown();
+
+	/** Nhả chuột phải: Hoàn tất kéo map hoặc thực thi Hủy chọn */
+	void OnRightMouseUp();
 
 	/** Nhấn phím R: Xoay hướng công trình */
 	void OnRotateKeyPressed();
+
+	// ==========================================
+	// RIGHT MOUSE DRAG PANNING (TIMBERBORN STYLE)
+	// ==========================================
+
+	/** Cờ đánh dấu đang nhấn giữ chuột phải để kéo map */
+	bool bIsRightMousePressed = false;
+
+	/** Cờ đánh dấu đã vượt ngưỡng kéo chuột (Drag) hay chỉ là Click nhanh */
+	bool bHasRightMouseDragged = false;
+
+	/** Tọa độ chuột trên màn hình lúc bắt đầu nhấn chuột phải */
+	FVector2D InitialRightClickPos = FVector2D::ZeroVector;
+
+	/** Tọa độ chuột ở khung hình trước phục vụ tính Delta kéo */
+	FVector2D LastMouseDragPos = FVector2D::ZeroVector;
+
+	/** Ngưỡng di chuyển pixel chuột để tính là Kéo map (pixels) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Camera Drag")
+	float RightMouseDragThreshold = 6.0f;
+
+	/** Độ nhạy kéo map bằng chuột phải */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Camera Drag")
+	float RightMouseDragSensitivity = 1.6f;
 
 	// ==========================================
 	// ACTION EXECUTIONS

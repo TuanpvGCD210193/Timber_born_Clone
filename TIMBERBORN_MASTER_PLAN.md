@@ -368,28 +368,36 @@ Mục này cung cấp tài liệu kỹ thuật chuyên sâu và các nguyên lý
     - `Step 3.5.2`: [XONG] C++ Implementation Logic (Tự động kích hoạt Mũi tên 3D chỉ hướng cửa, xoay 90° phím `R`, tự động ẩn khi lát đường đè lên ô cửa, ép buộc kiểm tra đường chạm đúng ô cửa).
     - `Step 3.5.3`: [XONG] Tối Ưu Refactor Codebase & Sửa Lỗi Demolish (Xóa code thừa, bảo vệ Nhà Chính không thể xóa, khớp chính xác 100% Instance ISM theo vị trí 3D thực tế khi xóa đường).
     - `Phase 3 Retrospective`: [XONG] Tổng kết toàn diện Hệ thống Công trình, Móng giàn giáo, Cọ vẽ và Kết nối mạng lưới.
-- **Phase 4: Hải Ly AI & Vòng Lặp Khai Thác Gỗ [TẠM THỜI ĐÓNG GÓI - PENDING]**
+- **Phase 4: Hải Ly AI & Vòng Lặp Kinh Tế Xây Dựng [ĐANG THỰC HIỆN]**
   - `Step 4.1`: Beaver AI Controller & State Machine [XONG]:
     - `Step 4.1.1`: [XONG] C++ Header & Architecture (`ABeaverAgent`, `EBeaverState`, `EBeaverProfession`, `FBeaverAttributeConfig`, Console command `DebugBeavers`).
     - `Step 4.1.2`: [XONG] C++ Implementation Logic (FSM AI Machine, Grid Linear Interpolation Movement, bám Waypoints A*, tăng tốc +50% trên DirtPath, Debug Visual 3D Level 1/2).
     - `Step 4.1.3`: [XONG] Hands-on UE Editor Setup & Testing (`BP_BeaverCharacter`, gán Mesh/Capsule Overlap, test lệnh console `DebugBeavers 1/2` và di chuyển A*).
-  - `Step 4.2`: Khai Thác Cây, Vận Chuyển Gỗ & Tích Trữ Vào Kho [PENDING TẠM THỜI]:
+  - `Step 4.2`: Khai Thác Cây, Vận Chuyển Gỗ & Tích Trữ Vào Kho [XONG]:
     - `Step 4.2.1`: [XONG] C++ Header & Architecture (UI Inspector Virtual Interface `IsWorkplace`, `AddWorker`, Vùng xanh `WorkRadius`, Thuật toán lọc cây gần nhất, Chống kẹt overlap).
     - `Step 4.2.2a`: [XONG] C++ Logic Trại Đốn Gỗ & Viền Xanh 3D (Quét cây trong bán kính, vẽ dải viền xanh `DrawWorkAreaBounds`, quản lý thợ `AddWorker`/`RemoveWorker`).
     - `Step 4.2.2b`: [XONG] C++ Logic Hải Ly Đốn Cây & Chuyển Hóa Gốc Cây (A* tới ô cạnh cây chống kẹt, FSM đếm ngược 3s có % tiến độ dưới `[WORKING]`, chuyển `TreeMature` $\rightarrow$ `TreeStump`, hiện gỗ trên lưng).
     - `Step 4.2.2c`: [XONG] C++ Logic Tìm Kho Gần Nhất & Vận Chuyển (Tìm kho gần nhất còn chỗ chứa, A* vác gỗ về nạp kho, khép kín vòng lặp tự động tìm cây tiếp theo).
     - `Step 4.2.3`: [XONG] Hands-on UE Editor Setup & Testing (Tạo Widget `WBP_BuildingInspector`, click chọn công trình mở bảng + bật viền xanh, tuyển thợ test thực chiến, đóng gói tài liệu Blueprint Graph).
-- **Phase 5: Camera RTS, Game Speed & UI HUD**
-  - `Step 5.1`: RTS Camera Controller:
-    - `Step 5.1.1`: C++ Header (`ATimberRTSCamera`, Pan, Orbit, Zoom).
-    - `Step 5.1.2`: C++ Implementation Logic (Xử lý Input WASD, Q/E, Mouse Wheel).
-    - `Step 5.1.3`: Hands-on UE Editor Setup & Testing (Thiết lập Camera Rig Actor trên Level).
-    - `Step 5.1.4`: [ENHANCE] Bổ trợ Lát đường & Raycast chống lệch góc nhìn Camera (Lọc bỏ va chạm thân công trình khi lát đường, chiếu thẳng xuống mặt sàn lưới Ground Plane để triệt tiêu 100% hiện tượng Perspective Parallax khi xoay Camera).
-  - `Step 5.2`: Game Speed Manager:
+  - `Step 4.3`: Hệ Thống Xây Dựng Hải Ly & Chuỗi Cung Ứng Động (Multi-Beaver Cooperative Construction & Dynamic Supply Chain) [ĐANG THỰC HIỆN]:
+    - `Step 4.3.1`: [XONG] Data Models & Building Base Priority Fields (`ConstructionPriority` 1-4, FIFO `PlacementOrderIndex`, `ReservedWoodDelivering`, `GetMaxAllowedBuilders`).
+    - `Step 4.3.2`: [XONG] Beaver Agent Carry Capacity & Task States (`CarryingWoodCount` Max 2, Task `SupplyingWood`, `ConstructingBuilding`).
+    - `Step 4.3.3`: [XONG] Sub-Class Manager Architecture (`UTimberConstructionManager` Header, Priority + FIFO 2-Tier Sorting Queue).
+    - `Step 4.3.4`: [XONG] C++ Logic Dynamic Supply Chain (Quét Kho/Nhà Chính realtime $\rightarrow$ Đốn Cây Bù Đắp khi hết kho $\rightarrow$ Vác thẳng tới móng).
+    - `Step 4.3.5`: [XONG] C++ Logic Cooperative Construction Progress (Phân bổ tối đa 1-4 thợ theo Priority, tính tiến độ cộng dồn 10%-40%/s).
+    - `Step 4.3.6`: Hands-on UE Editor Setup & Visual Verification (Test đặt móng đa công trình, kiểm chứng bù đắp gỗ, ưu tiên Priority/FIFO và cùng đập búa xây nhà).
+- **Phase 5: Camera RTS, Game Speed & UI HUD [HOÀN THÀNH 100%]**
+  - `Step 5.1`: RTS Camera Controller [XONG]:
+    - `Step 5.1.1`: [XONG] C++ Header (`ATimberRTSCamera`, Pan, Orbit, Zoom).
+    - `Step 5.1.2`: [XONG] C++ Implementation Logic (Xử lý Input WASD, Q/E, Mouse Wheel, Smooth Interp).
+    - `Step 5.1.3`: [XONG] Hands-on UE Editor Setup & Testing (Tạo `BP_TimberRTSCamera`, tinh chỉnh OrbitSpeed & Smoothing).
+  - `Step 5.2`: Game Speed Manager [CHUYỂN SANG FUTURE FEATURE]:
     - `Step 5.2.1`: C++ Header (Time Dilation Manager).
     - `Step 5.2.2`: C++ Implementation Logic (Pause, 1x, 2x, 3x).
     - `Step 5.2.3`: Hands-on UE Editor Setup & Testing (Test phím tắt điều khiển thời gian).
-  - `Step 5.3`: Thiết Kế UI HUD Widget:
-    - `Step 5.3.1`: C++ Header (`UTimberHUDWidget`, Binding tài nguyên & nút xây).
-    - `Step 5.3.2`: C++ Implementation Logic (Cập nhật số Gỗ, Dân số, Trigger đặt móng).
-    - `Step 5.3.3`: Hands-on UE Editor Setup & Testing (Thiết kế Widget Blueprint UMG, hoàn thiện trọn vẹn Prototype).
+  - `Step 5.3`: Thiết Kế UI HUD Master Widget & Thống Kê Tổng Hợp (Dân Số, Kho Gỗ & Menu Đáy) [XONG]:
+    - `Step 5.3.1`: [XONG] C++ Header & Sub-Class UI Data Model (`UTimberMasterHUDWidget`, Delegate Event Cập nhật Tài nguyên, Dân số, Slot công nhân).
+    - `Step 5.3.2`: [XONG] C++ Implementation Logic (Quét toàn bộ Kho chứa và Nhà Chính trong Level để tính tổng số Gỗ và Dân số thời gian thực).
+    - `Step 5.3.3`: [XONG] Hands-on UE Editor Setup & Visual Test (Thiết kế Widget `WBP_MasterHUD`, thanh tài nguyên ở đỉnh màn hình, thanh Menu 6 nút ở đáy, gắn vào PlayerController và test trực quan).
+  - `Step 5.4`: [XONG] Free-Look Orbit & Free Orientation Camera (Nhấn giữ chuột phải xoay góc nhìn tự do 360° như Editor Viewport, khóa cứng độ cao Z khi di chuyển WASD, chỉ nâng hạ độ cao bằng con lăn chuột).
+  - `Phase 5 Retrospective`: [XONG] Tổng kết toàn diện Hệ thống Camera RTS, Master HUD & Hoàn thành Prototype Core Game!

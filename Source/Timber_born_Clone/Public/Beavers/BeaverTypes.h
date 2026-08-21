@@ -30,6 +30,17 @@ enum class EBeaverProfession : uint8
 	Hauler              UMETA(DisplayName = "Người Vận Chuyển Kho (Hauler)")
 };
 
+/** Giai đoạn hiện tại của một nhiệm vụ xây dựng đã được Agent nhận độc quyền. */
+UENUM(BlueprintType)
+enum class EConstructionTaskPhase : uint8
+{
+	None            UMETA(DisplayName = "Không có nhiệm vụ"),
+	MovingToSource  UMETA(DisplayName = "Đang tới kho lấy gỗ"),
+	MovingToSite    UMETA(DisplayName = "Đang mang gỗ tới móng"),
+	MovingToBuild   UMETA(DisplayName = "Đang tới móng xây dựng"),
+	Building        UMETA(DisplayName = "Đang thi công")
+};
+
 /**
  * Bảng cấu hình chỉ số cơ bản của Hải ly (Data-Driven 100% không hardcode)
  */
@@ -54,9 +65,13 @@ struct FBeaverAttributeConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Attributes")
 	float TreeChopDuration = 3.0f;
 
-	/** Sức chứa gỗ tối đa trên lưng khi mang vác */
+	/** Sức chứa gỗ tối đa trên lưng khi mang vác (Mặc định vác tối đa 2 Gỗ) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Attributes")
-	int32 MaxWoodCarryCapacity = 1;
+	int32 MaxWoodCarryCapacity = 2;
+
+	/** Tốc độ gõ búa xây dựng cơ bản của 1 Hải ly (% hoàn thành mỗi giây, vd: 10% = 0.1f) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Attributes")
+	float BuildSpeedPerSecond = 0.10f;
 
 	/** Thể lực tối đa */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Attributes")

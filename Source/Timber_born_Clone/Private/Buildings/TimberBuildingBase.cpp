@@ -2,6 +2,7 @@
 
 #include "Timber_born_Clone/Public/Buildings/TimberBuildingBase.h"
 #include "Timber_born_Clone/Public/Buildings/TimberDistrictCenter.h"
+#include "Timber_born_Clone/Public/Buildings/TimberConstructionManager.h"
 #include "Timber_born_Clone/Public/Grid/TimberGridManager.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
@@ -99,6 +100,25 @@ void ATimberBuildingBase::SetBuildingState(EBuildingState NewState)
 	const EBuildingState OldState = BuildingState;
 	BuildingState = NewState;
 
+	// Cập nhật vào Hàng đợi Xây dựng
+	if (ATimberGridManager* Grid = GetGridManager())
+	{
+		if (UTimberConstructionManager* CM = Grid->GetConstructionManager())
+		{
+			if (NewState == EBuildingState::UnderConstruction)
+			{
+				CM->RegisterConstructionSite(this);
+			}
+			else if (OldState == EBuildingState::UnderConstruction)
+			{
+				CM->UnregisterConstructionSite(this);
+			}
+		}
+
+		// State công trình và trạng thái mạng đường phải đồng bộ trong cùng frame.
+		Grid->UpdateAllBuildingsConnectionStatus();
+	}
+
 	UE_LOG(LogTemp, Log, TEXT("ATimberBuildingBase [%s]: Chuyển đổi trạng thái từ [%s] -> [%s]"),
 		*BuildingName,
 		*UEnum::GetValueAsString(OldState),
@@ -133,7 +153,7 @@ void ATimberBuildingBase::UpdateVisuals()
 		}
 		if (DoorArrowComponent)
 		{
-			DoorArrowComponent->SetRelativeLocation(CalcDoorArrowLocalOffset());
+			UpdateDoorArrowTransform();
 			DoorArrowComponent->SetVisibility(true);
 		}
 
@@ -188,26 +208,24 @@ void ATimberBuildingBase::UpdateVisuals()
 	}
 }
 
-bool ATimberBuildingBase::DeliverWood(int32 Amount)
+int32 ATimberBuildingBase::AddDeliveredWood(int32 Amount)
 {
-	if (BuildingState != EBuildingState::UnderConstruction)
+	if (Amount <= 0 || HasAllRequiredWood())
 	{
-		return false;
-	}
-
-	if (CurrentWoodDelivered >= WoodCost)
-	{
-		return false; // Đã đủ gỗ
+		return 0; // Đã đủ gỗ
 	}
 
 	const int32 OldWood = CurrentWoodDelivered;
 	CurrentWoodDelivered = FMath::Clamp(CurrentWoodDelivered + Amount, 0, WoodCost);
 	const int32 Delivered = CurrentWoodDelivered - OldWood;
 
-	UE_LOG(LogTemp, Log, TEXT("ATimberBuildingBase [%s]: Đã tiếp nhận %d Gỗ (Hiện có: %d / %d Gỗ)."),
-		*BuildingName, Delivered, CurrentWoodDelivered, WoodCost);
+	// Giảm số lượng gỗ đang đặt chỗ (Reserved) tương ứng
+	ReservedWoodDelivering = FMath::Max(0, ReservedWoodDelivering - Delivered);
 
-	return Delivered > 0;
+	UE_LOG(LogTemp, Log, TEXT("ATimberBuildingBase [%s]: Đã tiếp nhận %d Gỗ (Hiện có: %d / %d Gỗ, Reserved còn lại: %d)."),
+		*BuildingName, Delivered, CurrentWoodDelivered, WoodCost, ReservedWoodDelivering);
+
+	return Delivered;
 }
 
 void ATimberBuildingBase::AdvanceBuildProgress(float WorkDeltaTime)
@@ -218,7 +236,7 @@ void ATimberBuildingBase::AdvanceBuildProgress(float WorkDeltaTime)
 	}
 
 	// Bắt buộc phải tập kết đủ 100% gỗ mới được phép thi công gõ búa
-	if (!HasRequiredWood())
+	if (!HasAllRequiredWood())
 	{
 		return;
 	}
@@ -249,21 +267,49 @@ ATimberGridManager* ATimberBuildingBase::GetGridManager() const
 
 FIntVector ATimberBuildingBase::GetDoorGridCoord() const
 {
-	if (ATimberGridManager* Grid = GetGridManager())
-	{
-		// 1. Nếu DoorArrowComponent đang có vị trí thế giới hợp lệ
-		if (DoorArrowComponent && !DoorArrowComponent->GetRelativeLocation().IsZero())
-		{
-			return Grid->WorldLocationToGridCoord(DoorArrowComponent->GetComponentLocation());
-		}
+	int32 SizeX = FootprintSize.X;
+	int32 SizeY = FootprintSize.Y;
 
-		// 2. Tính toán chính xác theo Origin + Góc xoay Actor Rotation
-		const FVector LocalDoorOffset = CalcDoorArrowLocalOffset();
-		const FVector WorldDoorPos = GetActorTransform().TransformPosition(LocalDoorOffset);
-		return Grid->WorldLocationToGridCoord(WorldDoorPos);
+	const int32 YawAngle = FMath::RoundToInt(GetActorRotation().Yaw) % 360;
+	const int32 NormalizedYaw = (YawAngle < 0) ? (YawAngle + 360) : YawAngle;
+
+	if (NormalizedYaw == 90 || NormalizedYaw == 270)
+	{
+		SizeX = FootprintSize.Y;
+		SizeY = FootprintSize.X;
 	}
 
-	return OriginGridCoord + DoorRelativeCoord;
+	// Xác định hướng mặt tiền theo góc xoay chuẩn của Unreal Engine:
+	// Yaw = 0   -> Nhìn theo +X (Đông) -> Cửa nằm ở mặt tiền +X (Origin.X + SizeX, Origin.Y + DoorRel.Y)
+	// Yaw = 90  -> Nhìn theo +Y (Bắc)  -> Cửa nằm ở mặt tiền +Y (Origin.X + DoorRel.X, Origin.Y + SizeY)
+	// Yaw = 180 -> Nhìn theo -X (Tây)  -> Cửa nằm ở mặt tiền -X (Origin.X - 1, Origin.Y + DoorRel.Y)
+	// Yaw = 270 -> Nhìn theo -Y (Nam)  -> Cửa nằm ở mặt tiền -Y (Origin.X + DoorRel.X, Origin.Y - 1)
+
+	FIntVector DoorCoord = OriginGridCoord;
+
+	if (NormalizedYaw == 90)
+	{
+		DoorCoord.X = OriginGridCoord.X + FMath::Clamp(DoorRelativeCoord.X, 0, SizeX - 1);
+		DoorCoord.Y = OriginGridCoord.Y + SizeY;
+	}
+	else if (NormalizedYaw == 180)
+	{
+		DoorCoord.X = OriginGridCoord.X - 1;
+		DoorCoord.Y = OriginGridCoord.Y + FMath::Clamp(DoorRelativeCoord.Y, 0, SizeY - 1);
+	}
+	else if (NormalizedYaw == 270)
+	{
+		DoorCoord.X = OriginGridCoord.X + FMath::Clamp(DoorRelativeCoord.X, 0, SizeX - 1);
+		DoorCoord.Y = OriginGridCoord.Y - 1;
+	}
+	else // Yaw == 0 hoặc mặc định
+	{
+		DoorCoord.X = OriginGridCoord.X + SizeX;
+		DoorCoord.Y = OriginGridCoord.Y + FMath::Clamp(DoorRelativeCoord.Y, 0, SizeY - 1);
+	}
+
+	DoorCoord.Z = OriginGridCoord.Z;
+	return DoorCoord;
 }
 
 FVector ATimberBuildingBase::GetDoorWorldLocation(const ATimberGridManager* GridManager) const
@@ -357,11 +403,6 @@ TArray<FIntVector> ATimberBuildingBase::GetPerimeterAdjacentCoords() const
 	return PerimeterCoords;
 }
 
-int32 ATimberBuildingBase::GetRemainingWoodNeeded() const
-{
-	return FMath::Max(0, WoodCost - CurrentWoodDelivered);
-}
-
 float ATimberBuildingBase::GetBuildProgressPercent() const
 {
 	return CurrentBuildProgress * 100.0f;
@@ -410,7 +451,7 @@ void ATimberBuildingBase::SetDoorArrowVisible(bool bVisible)
 	{
 		if (bVisible)
 		{
-			DoorArrowComponent->SetRelativeLocation(CalcDoorArrowLocalOffset());
+			UpdateDoorArrowTransform();
 			DoorArrowComponent->SetVisibility(true);
 		}
 		else
@@ -431,7 +472,7 @@ void ATimberBuildingBase::SetDoorArrowVisible(bool bVisible)
 	if (bVisible)
 	{
 		// Căn chỉnh vị trí Mũi tên 3D nằm chính xác tại ô đường ngay phía trước cửa (bên ngoài móng)
-		DoorArrowComponent->SetRelativeLocation(CalcDoorArrowLocalOffset());
+		UpdateDoorArrowTransform();
 		DoorArrowComponent->SetVisibility(true);
 	}
 	else
@@ -442,11 +483,28 @@ void ATimberBuildingBase::SetDoorArrowVisible(bool bVisible)
 
 FVector ATimberBuildingBase::CalcDoorArrowLocalOffset() const
 {
-	const float LocalX = (DoorRelativeCoord.X - (FootprintSize.X - 1) * 0.5f) * 100.0f;
-	const float LocalY = (FootprintSize.Y * 0.5f) * 100.0f + 50.0f; // Đẩy ra ngoài mặt tiền 1 ô (50cm)
-	const float LocalZ = 15.0f;                                     // Nổi nhẹ 15cm trên mặt sàn/cỏ
+	// Component dùng local space nên KHÔNG tráo X/Y theo Actor Yaw.
+	// Actor rotation tự xoay toàn bộ mặt tiền local +X sang hướng thế giới tương ứng.
+	const int32 SizeX = FootprintSize.X;
+	const int32 SizeY = FootprintSize.Y;
+
+	// Đẩy mũi tên ra mặt tiền local +X đúng 1 ô.
+	const float LocalX = (SizeX * 0.5f) * 100.0f + 50.0f;
+	const float LocalY = (DoorRelativeCoord.Y - (SizeY - 1) * 0.5f) * 100.0f;
+	const float LocalZ = 15.0f;
 
 	return FVector(LocalX, LocalY, LocalZ);
+}
+
+void ATimberBuildingBase::UpdateDoorArrowTransform()
+{
+	if (!DoorArrowComponent)
+	{
+		return;
+	}
+
+	DoorArrowComponent->SetRelativeLocation(CalcDoorArrowLocalOffset());
+	DoorArrowComponent->SetRelativeRotation(FRotator(0.0f, DoorArrowMeshYawOffset, 0.0f));
 }
 
 void ATimberBuildingBase::UpdateDistrictConnectionVisuals(bool bConnected)
@@ -532,6 +590,9 @@ void ATimberBuildingBase::Editor_InstantComplete()
 void ATimberBuildingBase::Editor_ResetConstruction()
 {
 	CurrentWoodDelivered = 0;
+	ReservedWoodDelivering = 0;
+	CurrentActiveBuilders = 0;
+	ReservedBuildersEnRoute = 0;
 	CurrentBuildProgress = 0.0f;
 	SetBuildingState(EBuildingState::UnderConstruction);
 	UE_LOG(LogTemp, Warning, TEXT("[CALL-IN-EDITOR] [%s]: Đã reset móng công trình về 0%%."), *BuildingName);

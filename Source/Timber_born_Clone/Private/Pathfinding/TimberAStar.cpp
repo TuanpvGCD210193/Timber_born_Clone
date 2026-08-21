@@ -10,8 +10,11 @@ float UTimberAStar::CalculateHeuristic(const FIntVector& A, const FIntVector& B)
 	const float Dy = FMath::Abs(A.Y - B.Y);
 	const float Dz = FMath::Abs(A.Z - B.Z);
 
-	// Manhattan 2D + Trọng số chiều cao Z
-	return (Dx + Dy) + Dz * 1.5f;
+	// Heuristic phải <= chi phí bước nhỏ nhất để A* bảo đảm đường tối ưu.
+	// DirtPath có StepCost tối thiểu 0.2, vì vậy H cũ (= 1.0 mỗi ô) đã
+	// overestimate 5 lần và có thể trả tuyến vòng hàng nghìn node.
+	constexpr float MinimumStepCost = 0.2f;
+	return (Dx + Dy + Dz) * MinimumStepCost;
 }
 
 float UTimberAStar::CalculateStepCost(
@@ -24,19 +27,19 @@ float UTimberAStar::CalculateStepCost(
 		return 1.0f;
 	}
 
-	float BaseCost = 1.5f; // Mặc định đi bộ trên Cỏ/Đất tự nhiên (chậm hơn)
+	// Ưu tiên TUYỆT ĐỐI cho việc chạy trên đường (DirtPath)
+	float BaseCost = 10.0f; // Đi trên Cỏ/Đất tự nhiên có chi phí rất cao (Hải ly tránh đi cỏ trừ khi bất khả kháng)
 
-	// Ưu tiên chạy nhanh trên đường đất (DirtPath)
 	if (GridManager->HasPathAt(To))
 	{
-		BaseCost = 1.0f; // Chạy nhanh trên đường
+		BaseCost = 0.2f; // Chạy trên Đường Đất/Đá có chi phí cực thấp -> A* luôn luôn bám chặt trên đường!
 	}
 
 	// Chi phí leo dốc hoặc bước xuống bậc (1 block)
 	const int32 DeltaZ = FMath::Abs(To.Z - From.Z);
 	if (DeltaZ > 0)
 	{
-		BaseCost += 0.3f * DeltaZ;
+		BaseCost += 5.0f * DeltaZ; // Cực kỳ ngại nhảy bậc nếu không có đường
 	}
 
 	return BaseCost;
@@ -99,19 +102,45 @@ bool UTimberAStar::FindPath(
 		OpenSet.HeapPop(CurrentNode);
 		const FIntVector CurrentCoord = CurrentNode.Coord;
 
+		// Heap có thể chứa nhiều snapshot của cùng một Coord sau khi GScore được cải thiện.
+		// Bỏ entry cũ/đã đóng để không mở rộng lại node bằng chi phí lỗi thời.
+		if (ClosedSet.Contains(CurrentCoord))
+		{
+			continue;
+		}
+
+		const float* BestKnownGScore = GScoreMap.Find(CurrentCoord);
+		if (!BestKnownGScore || CurrentNode.GScore > *BestKnownGScore + KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+
 		// Đã tìm thấy đích đến!
 		if (CurrentCoord == TargetCoord)
 		{
 			FIntVector TraceCoord = TargetCoord;
 			OutPath.Add(TraceCoord);
+			TSet<FIntVector> ReconstructionVisited;
+			ReconstructionVisited.Add(TraceCoord);
+			const int32 MaxPathNodes = GridManager->GridCells.Num();
 
 			while (CameFrom.Contains(TraceCoord))
 			{
 				TraceCoord = CameFrom[TraceCoord];
+				if (ReconstructionVisited.Contains(TraceCoord) || OutPath.Num() >= MaxPathNodes)
+				{
+					UE_LOG(LogTemp, Error, TEXT("UTimberAStar: Phát hiện cycle/path vượt giới hạn khi reconstruct từ [%s] tới [%s]."),
+						*StartCoord.ToString(), *TargetCoord.ToString());
+					OutPath.Empty();
+					return false;
+				}
+				ReconstructionVisited.Add(TraceCoord);
 				OutPath.Add(TraceCoord);
 			}
 
 			Algo::Reverse(OutPath);
+			UE_LOG(LogTemp, Warning, TEXT("✅ [A* RESULT] Start=%s Target=%s Nodes=%d Cost=%.2f"),
+				*StartCoord.ToString(), *TargetCoord.ToString(), OutPath.Num(), CurrentNode.GScore);
 			return true;
 		}
 

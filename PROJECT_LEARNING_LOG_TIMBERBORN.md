@@ -103,6 +103,7 @@ Mọi Step tính năng (`Step X.Y`) bắt buộc phải chia thành 3 phần rõ
 | **2026-08-19** | **Optimization-First Mindset & Batch Operations Invariant** | Triệt tiêu vòng lặp gọi API đơn lẻ lên GPU/ISM. Luôn ưu tiên gom mảng `Batch Call` (như `RemoveInstances`, `AddInstances`) để GPU chỉ Rebuild đúng 1 lần, triệt tiêu hoàn toàn lag giật khi thao tác dữ liệu lớn! |
 | **2026-08-19** | **500-Line Modular Architecture & SRP Invariant** | Khi một Class/File dự đoán hoặc chạm ngưỡng **500 dòng code**, bắt buộc phân tách thành các Subsystem/Component/Helper Class chuyên trách có tiền tố liên kết (ví dụ: `TimberGrid_TerrainGen`, `TimberGrid_LevelBaker`), triệt tiêu hoàn toàn hiện tượng God-Class! |
 | **2026-08-20** | **First-Priority SOLID Architecture Invariant** | **Quy tắc bắt buộc đọc đầu tiên**: Luôn phân tách các nghiệp vụ chi tiết ra các Sub-Class / Data Asset độc lập theo SOLID, Class chính chỉ đóng vai trò Nhạc Trưởng (Controller/Coordinator) điều phối! |
+| **2026-08-21** | **Atomic Micro-Steps & Priority FIFO Construction Architecture** | Phân tách Micro-Steps siêu nhỏ chống quá tải khi gen code. Tách Sub-Class `UTimberConstructionManager` chuyên trách: Quét Kho realtime $\rightarrow$ Đốn cây bù đắp khi hết gỗ $\rightarrow$ Hàng đợi 2 tầng (Priority cao hơn đi trước + Cùng Priority thì FIFO) $\rightarrow$ Thi công hợp lực tối đa 1-4 thợ (10%-40%/s)! |
 
 ---
 

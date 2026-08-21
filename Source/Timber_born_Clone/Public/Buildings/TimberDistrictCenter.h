@@ -51,6 +51,7 @@ public:
 	virtual int32 GetMaxStorageCapacity() const override { return MaxWoodStorage; }
 	virtual int32 GetCurrentStoredAmount() const override { return CurrentWoodStock; }
 	virtual int32 StoreResource(int32 Amount) override { return AddWood(Amount); }
+	virtual int32 WithdrawResource(int32 Amount) override { return RemoveWood(Amount); }
 
 	// ==========================================
 	// STORAGE API

@@ -27,7 +27,9 @@ struct FAStarNode
 
 	bool operator<(const FAStarNode& Other) const
 	{
-		return FScore() > Other.FScore(); // Min-Heap: Phần tử nhỏ hơn sẽ có ưu tiên cao hơn
+		// TArray::HeapPush/HeapPop của UE dùng min-heap theo operator<.
+		// Node có FScore thấp nhất phải được xét trước.
+		return FScore() < Other.FScore();
 	}
 };
 

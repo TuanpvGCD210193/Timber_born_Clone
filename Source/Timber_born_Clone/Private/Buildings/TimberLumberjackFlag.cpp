@@ -39,6 +39,13 @@ bool ATimberLumberjackFlag::AddWorker(ABeaverAgent* Beaver)
 		return false;
 	}
 
+	// CHẶN: Chỉ cho phép tuyển thợ khi công trình đã xây xong 100%
+	if (BuildingState != EBuildingState::Completed)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("🌲 [LUMBERJACK FLAG] Không thể tuyển thợ vì công trình '%s' chưa xây xong!"), *BuildingName);
+		return false;
+	}
+
 	// Đảm bảo không vượt quá số lượng công nhân tối đa (MaxWorkers = 1)
 	if (AssignedWorkerBeavers.Num() >= MaxWorkers)
 	{

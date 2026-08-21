@@ -64,6 +64,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Components")
 	TObjectPtr<UStaticMeshComponent> DoorArrowComponent;
 
+	/** Hiệu chỉnh trục hướng của mesh mũi tên. 0 độ tương ứng mesh hướng theo local +X. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber", meta = (ClampMin = "-180.0", ClampMax = "180.0"))
+	float DoorArrowMeshYawOffset = 0.0f;
+
 	/** Widget Component hiển thị Icon Billboard cảnh báo đứt đường trên đầu công trình */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Components")
 	TObjectPtr<class UWidgetComponent> UnconnectedIconWidgetComponent;
@@ -140,6 +144,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Timber|Inspector")
 	virtual int32 StoreResource(int32 Amount) { return 0; }
 
+	/** Rút tài nguyên ra khỏi kho (-Gỗ). Trả về số lượng thực tế rút được. */
+	UFUNCTION(BlueprintCallable, Category = "Timber|Inspector")
+	virtual int32 WithdrawResource(int32 Amount) { return 0; }
+
 	/** Bật/Tắt hiển thị vùng bán kính làm việc (Work Area Bounds) */
 	UFUNCTION(BlueprintCallable, Category = "Timber|Inspector")
 	virtual void SetWorkAreaVisible(bool bVisible) {}
@@ -148,21 +156,61 @@ public:
 	// CONSTRUCTION & RESOURCE ECONOMY
 	// ==========================================
 
+	// ==========================================
+	// CONSTRUCTION & LOGISTICS DATA (STEP 4.3)
+	// ==========================================
+
 	/** Lượng gỗ cần thiết để xây dựng hoàn thiện công trình */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Construction", meta = (ClampMin = "0"))
 	int32 WoodCost = 10;
 
 	/** Lượng gỗ hải ly đã vận chuyển tới móng hiện tại */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Construction")
 	int32 CurrentWoodDelivered = 0;
 
+	/** Lượng gỗ đã được các chú Hải ly nhận nhiệm vụ và đang trên đường mang tới (Tránh cử thừa thợ) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Construction")
+	int32 ReservedWoodDelivering = 0;
+
+	/** Mức độ ưu tiên xây dựng (1 = Thấp, 2 = Bình thường/Mặc định, 3 = Cao, 4 = Khẩn cấp) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Construction", meta = (ClampMin = "1", ClampMax = "4"))
+	int32 ConstructionPriority = 2;
+
+	/** Thứ tự thời gian đặt móng (FIFO Order ID: Đặt trước thì số nhỏ hơn -> Xây trước) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Construction")
+	int64 PlacementOrderIndex = 0;
+
+	/** Số lượng thợ xây tối đa được phép cùng tham gia (Tương ứng với mức Priority: 1-4 thợ) */
+	UFUNCTION(BlueprintPure, Category = "Timber|Construction")
+	int32 GetMaxAllowedBuilders() const { return FMath::Clamp(ConstructionPriority, 1, 4); }
+
+	/** Số lượng thợ xây hiện đang trực tiếp gõ búa tại móng này */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Construction")
+	int32 CurrentActiveBuilders = 0;
+
+	/** Số thợ đã giữ chỗ và đang di chuyển tới móng. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Construction")
+	int32 ReservedBuildersEnRoute = 0;
+
 	/** Thời gian cần gõ búa để hoàn thiện (tính bằng giây) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Construction", meta = (ClampMin = "1.0"))
 	float BuildTimeSeconds = 10.0f;
 
 	/** Tiến độ thi công hiện tại (0.0 = chưa xây, 1.0 = hoàn thành 100%) */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Construction")
 	float CurrentBuildProgress = 0.0f;
+
+	/** Kiểm tra móng đã nhận đủ 100% gỗ cần thiết chưa để cho phép bắt đầu gõ búa */
+	UFUNCTION(BlueprintPure, Category = "Timber|Construction")
+	bool HasAllRequiredWood() const { return CurrentWoodDelivered >= WoodCost; }
+
+	/** Kiểm tra móng có đang cần thêm gỗ nữa không (tính cả gỗ đang trên đường vận chuyển) */
+	UFUNCTION(BlueprintPure, Category = "Timber|Construction")
+	bool NeedsMoreWoodDelivery() const { return (CurrentWoodDelivered + ReservedWoodDelivering) < WoodCost; }
+
+	/** Lượng gỗ còn thiếu thực tế cần nạp thêm */
+	UFUNCTION(BlueprintPure, Category = "Timber|Construction")
+	int32 GetRemainingWoodNeeded() const { return FMath::Max(0, WoodCost - (CurrentWoodDelivered + ReservedWoodDelivering)); }
 
 	/** Cờ báo hiệu công trình đã kết nối đường đi về District Center chưa */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber")
@@ -209,7 +257,11 @@ public:
 
 	/** Hải ly giao gỗ tới móng công trình */
 	UFUNCTION(BlueprintCallable, Category = "Timber")
-	bool DeliverWood(int32 Amount);
+	int32 AddDeliveredWood(int32 Amount);
+
+	/** Tương thích ngược: Giao gỗ tới móng */
+	UFUNCTION(BlueprintCallable, Category = "Timber")
+	bool DeliverWood(int32 Amount) { return AddDeliveredWood(Amount) > 0; }
 
 	/** Hải ly thợ xây gõ búa tăng tiến độ xây dựng */
 	UFUNCTION(BlueprintCallable, Category = "Timber")
@@ -222,10 +274,6 @@ public:
 	/** Lấy vị trí thế giới (World Location) của ô Cửa ra vào */
 	UFUNCTION(BlueprintPure, Category = "Timber")
 	FVector GetDoorWorldLocation(const ATimberGridManager* GridManager) const;
-
-	/** Lấy lượng gỗ còn thiếu cần được vận chuyển tới móng */
-	UFUNCTION(BlueprintPure, Category = "Timber")
-	int32 GetRemainingWoodNeeded() const;
 
 	/** Lấy phần trăm tiến độ thi công (0% -> 100%) */
 	UFUNCTION(BlueprintPure, Category = "Timber")
@@ -288,4 +336,7 @@ protected:
 
 	/** Tính toán vị trí tương đối (Local Offset) của Mũi tên chỉ hướng cửa nằm ngoài mặt tiền móng */
 	FVector CalcDoorArrowLocalOffset() const;
+
+	/** Đồng bộ vị trí và hướng local của mũi tên theo mặt tiền công trình. */
+	void UpdateDoorArrowTransform();
 };
