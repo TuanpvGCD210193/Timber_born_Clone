@@ -158,18 +158,22 @@ void ATimberPlayerController::PlayerTick(float DeltaTime)
 
 			for (const FIntVector& PathCoord : CachedDragPathCoords)
 			{
-				const bool bCanBuild = !Grid->HasPathAt(PathCoord) && Grid->IsCellEmptyForBuilding(PathCoord);
+				const bool bAlreadyPath = Grid->HasPathAt(PathCoord);
+				const bool bCanBuild = !bAlreadyPath && Grid->IsCellEmptyForBuilding(PathCoord);
+				const FColor PreviewColor = bAlreadyPath ? FColor::Cyan : (bCanBuild ? FColor::Green : FColor::Red);
 				const FVector TileCenter = Grid->GridCoordToWorldLocation(PathCoord, true) + FVector(0, 0, -45.0f);
-				DrawDebugBox(GetWorld(), TileCenter, FVector(48.0f, 48.0f, 4.0f), bCanBuild ? FColor::Green : FColor::Red, false, 0.05f, 0, 3.0f);
+				DrawDebugBox(GetWorld(), TileCenter, FVector(48.0f, 48.0f, 4.0f), PreviewColor, false, 0.05f, 0, 3.0f);
 			}
 		}
 		else
 		{
 			// Chưa nhấn chuột: Vẽ 1 ô Ghost Preview dưới con trỏ chuột
 			const FIntVector PathCoord = FIntVector(CurrentHoverGroundCoord.X, CurrentHoverGroundCoord.Y, CurrentHoverGroundCoord.Z + 1);
-			const bool bCanBuild = !Grid->HasPathAt(PathCoord) && Grid->IsCellEmptyForBuilding(PathCoord);
+			const bool bAlreadyPath = Grid->HasPathAt(PathCoord);
+			const bool bCanBuild = !bAlreadyPath && Grid->IsCellEmptyForBuilding(PathCoord);
+			const FColor PreviewColor = bAlreadyPath ? FColor::Cyan : (bCanBuild ? FColor::Green : FColor::Red);
 			const FVector TileCenter = Grid->GridCoordToWorldLocation(PathCoord, true) + FVector(0, 0, -45.0f);
-			DrawDebugBox(GetWorld(), TileCenter, FVector(48.0f, 48.0f, 4.0f), bCanBuild ? FColor::Green : FColor::Red, false, 0.05f, 0, 2.5f);
+			DrawDebugBox(GetWorld(), TileCenter, FVector(48.0f, 48.0f, 4.0f), PreviewColor, false, 0.05f, 0, 2.5f);
 		}
 	}
 	else if (CurrentBrushMode == ETimberBrushMode::Demolish)
@@ -642,12 +646,23 @@ void ATimberPlayerController::ExecutePaintPath(const FIntVector& TargetCoord)
 	if (Grid->HasPathAt(PathCoord))
 	{
 		// Đã có đường rồi -> Tuyệt đối không xây đè bậc thang lên trời
+		UE_LOG(LogTemp, Log, TEXT("[BRUSH] Ô (%d, %d, %d) đã có DirtPath, không cần lát lại."),
+			PathCoord.X, PathCoord.Y, PathCoord.Z);
 		return;
 	}
 
 	if (Grid->BuildPath(PathCoord))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[BRUSH] Lát thành công 1 ô đường tại (%d, %d, %d)."), PathCoord.X, PathCoord.Y, PathCoord.Z);
+	}
+	else
+	{
+		ATimberBuildingBase* BlockingBuilding = Grid->GetBuildingAt(PathCoord);
+		UE_LOG(LogTemp, Warning,
+			TEXT("[PATH BLOCKED] Coord=%s Building='%s' EmptyForBuilding=%s"),
+			*PathCoord.ToString(),
+			BlockingBuilding ? *BlockingBuilding->BuildingName : TEXT("None"),
+			Grid->IsCellEmptyForBuilding(PathCoord) ? TEXT("YES") : TEXT("NO"));
 	}
 }
 
@@ -824,24 +839,29 @@ void ATimberPlayerController::ExecutePlaceBuilding(const FIntVector& GroundCoord
 	const FVector SpawnWorldLocation = CornerLocation + FVector(SizeX * 50.0f, SizeY * 50.0f, 0.0f);
 	const FRotator SpawnRotation = FRotator(0.0f, static_cast<float>(BuildingRotationAngle), 0.0f);
 
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	ATimberBuildingBase* NewBuilding = World->SpawnActor<ATimberBuildingBase>(SelectedBuildingClass, SpawnWorldLocation, SpawnRotation, SpawnParams);
+	const FTransform BuildingTransform(SpawnRotation, SpawnWorldLocation);
+	ATimberBuildingBase* NewBuilding = World->SpawnActorDeferred<ATimberBuildingBase>(
+		SelectedBuildingClass, BuildingTransform, nullptr, nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (NewBuilding)
 	{
+		// Gán toàn bộ dữ liệu nguồn trước BeginPlay để GridManager chỉ đăng ký đúng một lần tại đúng tọa độ.
 		NewBuilding->OriginGridCoord = BuildingOrigin;
-		
-		// Đặt công trình về trạng thái Móng Giàn Giáo (UnderConstruction) sẵn sàng nhận gỗ thi công
-		NewBuilding->SetBuildingState(EBuildingState::UnderConstruction);
+		// Móng vừa đặt không tự hiện vùng làm việc. Vùng chỉ hiện lại khi người chơi click chọn nó.
+		NewBuilding->SetWorkAreaVisible(false);
+		NewBuilding->BuildingState = EBuildingState::UnderConstruction;
 		NewBuilding->CurrentWoodDelivered = 0;
 		NewBuilding->CurrentBuildProgress = 0.0f;
-
-		// Đăng ký công trình vào GridManager
-		Grid->RegisterBuilding(NewBuilding);
+		NewBuilding->FinishSpawning(BuildingTransform);
 
 		UE_LOG(LogTemp, Warning, TEXT("[BRUSH] Đã đặt móng công trình [%s] tại (%d, %d, %d)!"),
 			*NewBuilding->BuildingName, BuildingOrigin.X, BuildingOrigin.Y, BuildingOrigin.Z);
+
+		// Kết thúc phần hiển thị vùng preview sau lần đặt này.
+		if (HologramPreviewActor)
+		{
+			HologramPreviewActor->SetWorkAreaVisible(false);
+		}
 	}
 }
 
@@ -860,16 +880,20 @@ void ATimberPlayerController::SpawnHologramPreview()
 		return;
 	}
 
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	HologramPreviewActor = World->SpawnActor<ATimberBuildingBase>(SelectedBuildingClass, FVector(0, 0, -10000), FRotator::ZeroRotator, SpawnParams);
+	// Deferred spawn để đánh dấu preview trước BeginPlay, tránh actor bóng mờ đăng ký nhầm vào GridManager.
+	const FTransform PreviewTransform(FRotator::ZeroRotator, FVector(0, 0, -10000));
+	HologramPreviewActor = World->SpawnActorDeferred<ATimberBuildingBase>(
+		SelectedBuildingClass, PreviewTransform, nullptr, nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (HologramPreviewActor)
 	{
 		HologramPreviewActor->bIsHologramPreview = true;
+		HologramPreviewActor->FinishSpawning(PreviewTransform);
 		HologramPreviewActor->SetBuildingState(EBuildingState::Ghost_Valid);
 		HologramPreviewActor->SetActorEnableCollision(false);
 		HologramPreviewActor->SetActorHiddenInGame(false);
+		// Với Lumberjack Flag override này bật vùng WorkRadius; building khác là no-op.
+		HologramPreviewActor->SetWorkAreaVisible(true);
 	}
 }
 
@@ -903,6 +927,8 @@ void ATimberPlayerController::UpdateHologramPreview(const FIntVector& GroundCoor
 
 	if (HologramPreviewActor)
 	{
+		// DrawWorkAreaBounds dùng OriginGridCoord làm nguồn sự thật, nên phải cập nhật cùng con trỏ chuột.
+		HologramPreviewActor->OriginGridCoord = BuildingOrigin;
 		HologramPreviewActor->SetActorLocation(TargetLocation);
 		HologramPreviewActor->SetActorRotation(TargetRotation);
 		HologramPreviewActor->SetActorHiddenInGame(false);
@@ -929,6 +955,7 @@ void ATimberPlayerController::ClearHologramPreview()
 {
 	if (HologramPreviewActor)
 	{
+		HologramPreviewActor->SetWorkAreaVisible(false);
 		HologramPreviewActor->Destroy();
 		HologramPreviewActor = nullptr;
 	}

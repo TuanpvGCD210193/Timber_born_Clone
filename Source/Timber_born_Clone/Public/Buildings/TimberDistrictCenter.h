@@ -43,6 +43,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber", meta = (ClampMin = "10"))
 	int32 MaxDistrictRangeSteps = 70;
 
+	/** Tự động lát một vòng DirtPath quanh Nhà Chính lúc bắt đầu Play cho Hải ly rảnh đi dạo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Starting Area")
+	bool bCreateStartingRoadLoop = true;
+
+	/** Khoảng cách từ footprint Nhà Chính tới vòng đường khởi đầu (1 = sát chu vi). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Starting Area", meta = (ClampMin = "1", ClampMax = "4"))
+	int32 StartingRoadPadding = 1;
+
 	// ==========================================
 	// UI INSPECTOR OVERRIDES
 	// ==========================================

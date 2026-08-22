@@ -64,9 +64,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Components")
 	TObjectPtr<UStaticMeshComponent> DoorArrowComponent;
 
-	/** Hiệu chỉnh trục hướng của mesh mũi tên. 0 độ tương ứng mesh hướng theo local +X. */
+	/** Mesh mũi tên của project hướng theo local -Y; +90 độ đưa đầu mũi tên về local +X (ra ngoài cửa). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber", meta = (ClampMin = "-180.0", ClampMax = "180.0"))
-	float DoorArrowMeshYawOffset = 0.0f;
+	float DoorArrowMeshYawOffset = 90.0f;
 
 	/** Widget Component hiển thị Icon Billboard cảnh báo đứt đường trên đầu công trình */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Components")

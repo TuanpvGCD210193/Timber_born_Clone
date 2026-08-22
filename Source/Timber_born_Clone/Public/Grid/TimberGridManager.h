@@ -25,6 +25,9 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+	/** Tạo mạng DirtPath khởi đầu quanh District Center sau khi toàn bộ Actor đã đăng ký. */
+	void InitializeStartingDistrictPaths();
+
 public:	
 	virtual void Tick(float DeltaTime) override;
 

@@ -388,6 +388,15 @@ void ABeaverAgent::UpdateFSM(float DeltaTime)
 		if (CurrentProfession == EBeaverProfession::Lumberjack && AssignedWorkplaceFlag.IsValid() && AssignedWorkplaceFlag->BuildingState == EBuildingState::Completed)
 		{
 			StartLumberjackWorkLoop();
+			// Không có cây, hoặc đang giữ gỗ dư nhưng mọi kho đều đầy: vẫn được idle roam.
+			if (CurrentState == EBeaverState::Idle)
+			{
+				IdleRoamWaitRemaining -= DeltaTime;
+				if (IdleRoamWaitRemaining <= 0.0f)
+				{
+					TryStartIdleRoam();
+				}
+			}
 		}
 		// Nếu là Hải ly tự do (hoặc xưởng chưa xây xong) -> Tự động quét hàng đợi móng để xây dựng!
 		else
@@ -536,6 +545,7 @@ void ABeaverAgent::UpdateFSM(float DeltaTime)
 void ABeaverAgent::AssignWorkplace(ATimberLumberjackFlag* InFlag)
 {
 	AssignedWorkplaceFlag = InFlag;
+	IdleRoamAnchorBuilding = InFlag;
 	CurrentProfession = EBeaverProfession::Lumberjack;
 	StartLumberjackWorkLoop();
 }
@@ -543,6 +553,7 @@ void ABeaverAgent::AssignWorkplace(ATimberLumberjackFlag* InFlag)
 void ABeaverAgent::ClearWorkplace()
 {
 	AssignedWorkplaceFlag = nullptr;
+	IdleRoamAnchorBuilding = nullptr;
 	CurrentProfession = EBeaverProfession::Unemployed;
 	TargetTreeCoord = FIntVector::ZeroValue;
 	CurrentChopProgressTimer = 0.0f;
@@ -563,6 +574,32 @@ void ABeaverAgent::StartLumberjackWorkLoop()
 	{
 		return;
 	}
+
+	// Gỗ còn trên lưng là nguồn sự thật cho trạng thái "tài nguyên dư".
+	// Chưa cất hết thì không được chặt cây mới; thử kho khác, nếu tất cả đầy thì Idle/Roam.
+	if (CarriedWoodAmount > 0)
+	{
+		TargetTreeCoord = FIntVector::ZeroValue;
+		FIntVector StorageDoor;
+		ATimberBuildingBase* StorageBuilding = nullptr;
+		if (FindNearestAvailableStorage(StorageDoor, StorageBuilding))
+		{
+			bWaitingForStorageSpace = false;
+			MoveToGridCoord(StorageDoor);
+		}
+		else
+		{
+			if (!bWaitingForStorageSpace)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[EXCESS RESOURCE] '%s' còn %d gỗ trên lưng nhưng mọi kho đều đầy; chuyển sang IDLE ROAM."),
+					*BeaverName, CarriedWoodAmount);
+			}
+			bWaitingForStorageSpace = true;
+			SetBeaverState(EBeaverState::Idle);
+		}
+		return;
+	}
+	bWaitingForStorageSpace = false;
 
 	// 1. Quét tìm cây trưởng thành gần nhất bên trong Vùng Xanh (WorkRadius) của Flag
 	FIntVector FoundTreeCoord;
@@ -821,7 +858,7 @@ ATimberGridManager* ABeaverAgent::GetGridManager() const
 bool ABeaverAgent::TryStartIdleRoam()
 {
 	ATimberGridManager* Grid = GetGridManager();
-	if (!Grid || ConstructionTaskPhase != EConstructionTaskPhase::None || CarriedWoodAmount > 0)
+	if (!Grid || ConstructionTaskPhase != EConstructionTaskPhase::None)
 	{
 		return false;
 	}
@@ -838,13 +875,27 @@ bool ABeaverAgent::TryStartIdleRoam()
 		}
 	}
 
-	if (!AssignedDistrictCenter.IsValid())
+	ATimberBuildingBase* RoamAnchor = nullptr;
+	if (AssignedWorkplaceFlag.IsValid())
+	{
+		RoamAnchor = AssignedWorkplaceFlag.Get();
+	}
+	else if (IdleRoamAnchorBuilding.IsValid())
+	{
+		RoamAnchor = IdleRoamAnchorBuilding.Get();
+	}
+	else if (AssignedDistrictCenter.IsValid())
+	{
+		RoamAnchor = AssignedDistrictCenter.Get();
+	}
+
+	if (!RoamAnchor)
 	{
 		IdleRoamWaitRemaining = IdleRoamMaxWait;
 		return false;
 	}
 
-	const FIntVector Center = AssignedDistrictCenter->GetDoorGridCoord();
+	const FIntVector Center = RoamAnchor->GetDoorGridCoord();
 	TArray<FIntVector> Candidates;
 	for (int32 X = Center.X - IdleRoamRadius; X <= Center.X + IdleRoamRadius; ++X)
 	{
@@ -856,10 +907,11 @@ bool ABeaverAgent::TryStartIdleRoam()
 				continue;
 			}
 
-			for (int32 ZOffset = -1; ZOffset <= 1; ++ZOffset)
+			FIntVector GroundCoord;
+			if (Grid->GetTopSolidGridCoordAt(X, Y, GroundCoord))
 			{
-				const FIntVector Candidate(X, Y, Center.Z + ZOffset);
-				if (Candidate != CurrentGridCoord && Grid->HasPathAt(Candidate))
+				const FIntVector Candidate(X, Y, GroundCoord.Z + 1);
+				if (Candidate != CurrentGridCoord && Grid->IsCellEmptyForBuilding(Candidate))
 				{
 					Candidates.Add(Candidate);
 				}
@@ -913,6 +965,10 @@ int32 ABeaverAgent::RemoveCarriedWood(int32 Amount)
 
 	const int32 Removed = FMath::Min(Amount, CarriedWoodAmount);
 	CarriedWoodAmount -= Removed;
+	if (CarriedWoodAmount <= 0)
+	{
+		bWaitingForStorageSpace = false;
+	}
 
 	if (CarriedWoodMeshComponent)
 	{
@@ -951,7 +1007,9 @@ bool ABeaverAgent::StartConstructionWorkLoop()
 		// Tìm móng ưu tiên cao nhất đang cần nạp gỗ
 		if (ATimberBuildingBase* SiteNeedingWood = CM->GetNextSiteNeedingWood())
 		{
+			bWaitingForStorageSpace = false;
 			TargetConstructionBuilding = SiteNeedingWood;
+			IdleRoamAnchorBuilding = SiteNeedingWood;
 
 			FIntVector DropCoord;
 			if (FindBestRoadAccessCoord(SiteNeedingWood, DropCoord))
@@ -970,12 +1028,15 @@ bool ABeaverAgent::StartConstructionWorkLoop()
 		ATimberBuildingBase* StorageBuilding = nullptr;
 		if (FindNearestAvailableStorage(StorageDoor, StorageBuilding))
 		{
+			bWaitingForStorageSpace = false;
 			TargetConstructionBuilding = nullptr;
 			return MoveToGridCoord(StorageDoor);
 		}
 
+		bWaitingForStorageSpace = true;
 		return false;
 	}
+	bWaitingForStorageSpace = false;
 
 	// ========================================================
 	// TRƯỜNG HỢP 2: TRÊN VAI CHƯA CÓ GỖ -> BƯỚC 1: CHẠY TỚI KHO LẤY GỖ
@@ -995,6 +1056,7 @@ bool ABeaverAgent::StartConstructionWorkLoop()
 				SiteNeedingWood->ReservedWoodDelivering += WoodToReserve;
 				ReservedConstructionWoodAmount = WoodToReserve;
 				TargetConstructionBuilding = SiteNeedingWood;
+				IdleRoamAnchorBuilding = SiteNeedingWood;
 				ConstructionSourceBuilding = SourceBuilding;
 				ConstructionTaskPhase = EConstructionTaskPhase::MovingToSource;
 
@@ -1018,6 +1080,7 @@ bool ABeaverAgent::StartConstructionWorkLoop()
 		if (CM->ReserveBuilderSlot(SiteNeedingBuilders))
 		{
 			TargetConstructionBuilding = SiteNeedingBuilders;
+			IdleRoamAnchorBuilding = SiteNeedingBuilders;
 
 			FIntVector BuildCoord;
 			if (FindBestRoadAccessCoord(SiteNeedingBuilders, BuildCoord))

@@ -73,9 +73,64 @@ void ATimberGridManager::BeginPlay()
 		RebuildISMComponents();
 	}
 
-	// Đảm bảo sau khi tất cả các Actor hoàn tất BeginPlay (0.1 giây), hệ thống sẽ quét kết nối đường đi toàn cục 1 lần
+	// Sau khi mọi Actor hoàn tất BeginPlay: tạo đường khởi đầu rồi quét kết nối District.
 	FTimerHandle InitRoadTimer;
-	GetWorld()->GetTimerManager().SetTimer(InitRoadTimer, this, &ATimberGridManager::UpdateAllBuildingsConnectionStatus, 0.1f, false);
+	GetWorld()->GetTimerManager().SetTimer(InitRoadTimer, this, &ATimberGridManager::InitializeStartingDistrictPaths, 0.1f, false);
+}
+
+void ATimberGridManager::InitializeStartingDistrictPaths()
+{
+	int32 BuiltCount = 0;
+
+	for (const TObjectPtr<ATimberBuildingBase>& Building : RegisteredBuildings)
+	{
+		ATimberDistrictCenter* DistrictCenter = Cast<ATimberDistrictCenter>(Building.Get());
+		if (!IsValid(DistrictCenter) || !DistrictCenter->bCreateStartingRoadLoop)
+		{
+			continue;
+		}
+
+		const int32 Padding = FMath::Max(1, DistrictCenter->StartingRoadPadding);
+		const int32 MinX = DistrictCenter->OriginGridCoord.X - Padding;
+		const int32 MaxX = DistrictCenter->OriginGridCoord.X + DistrictCenter->FootprintSize.X - 1 + Padding;
+		const int32 MinY = DistrictCenter->OriginGridCoord.Y - Padding;
+		const int32 MaxY = DistrictCenter->OriginGridCoord.Y + DistrictCenter->FootprintSize.Y - 1 + Padding;
+
+		TArray<FIntPoint> RingCells;
+		for (int32 X = MinX; X <= MaxX; ++X)
+		{
+			RingCells.AddUnique(FIntPoint(X, MinY));
+			RingCells.AddUnique(FIntPoint(X, MaxY));
+		}
+		for (int32 Y = MinY + 1; Y < MaxY; ++Y)
+		{
+			RingCells.AddUnique(FIntPoint(MinX, Y));
+			RingCells.AddUnique(FIntPoint(MaxX, Y));
+		}
+
+		for (const FIntPoint& XY : RingCells)
+		{
+			FIntVector GroundCoord;
+			if (!GetTopSolidGridCoordAt(XY.X, XY.Y, GroundCoord))
+			{
+				continue;
+			}
+
+			const FIntVector PathCoord(XY.X, XY.Y, GroundCoord.Z + 1);
+			if (HasPathAt(PathCoord))
+			{
+				continue;
+			}
+
+			if (BuildPath(PathCoord))
+			{
+				++BuiltCount;
+			}
+		}
+	}
+
+	UpdateAllBuildingsConnectionStatus();
+	UE_LOG(LogTemp, Warning, TEXT("[STARTING ROADS] Đã tạo %d ô DirtPath quanh Nhà Chính cho IDLE ROAM."), BuiltCount);
 }
 
 void ATimberGridManager::Tick(float DeltaTime)
@@ -1874,4 +1929,3 @@ void ATimberGridManager::LoadFromMapPreset()
 	UE_LOG(LogTemp, Warning, TEXT("🎉 [MAP PRESET] ĐÃ HỒI SINH THÀNH CÔNG %d Ô TỪ PRESET: '%s' LÊN VIEWPORT TRONG 0.001s!"),
 		GridCells.Num(), *ActiveMapPreset->GetName());
 }
-

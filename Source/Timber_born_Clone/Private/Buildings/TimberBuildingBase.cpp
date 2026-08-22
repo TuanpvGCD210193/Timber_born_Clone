@@ -61,10 +61,25 @@ void ATimberBuildingBase::BeginPlay()
 	{
 		CachedGridManager = Grid;
 
-		if (OriginGridCoord.IsZero())
+		// Actor Location của building là TÂM footprint, còn OriginGridCoord là GÓC Min X/Y.
+		// Luôn đồng bộ từ Transform để cả building đặt sẵn và building spawn runtime dùng một quy ước.
+		int32 SizeX = FootprintSize.X;
+		int32 SizeY = FootprintSize.Y;
+		const int32 NormalizedYaw = (FMath::RoundToInt(GetActorRotation().Yaw) % 360 + 360) % 360;
+		if (NormalizedYaw == 90 || NormalizedYaw == 270)
 		{
-			OriginGridCoord = Grid->WorldLocationToGridCoord(GetActorLocation());
+			Swap(SizeX, SizeY);
 		}
+
+		const FVector FootprintMinWorld = GetActorLocation() - FVector(
+			SizeX * Grid->CellSize * 0.5f,
+			SizeY * Grid->CellSize * 0.5f,
+			0.0f);
+		OriginGridCoord = Grid->WorldLocationToGridCoord(FootprintMinWorld);
+
+		UE_LOG(LogTemp, Warning,
+			TEXT("[BUILDING ORIGIN] '%s' Actor=%s Footprint=%dx%d -> Origin=%s"),
+			*BuildingName, *GetActorLocation().ToString(), SizeX, SizeY, *OriginGridCoord.ToString());
 		Grid->RegisterBuilding(this);
 	}
 

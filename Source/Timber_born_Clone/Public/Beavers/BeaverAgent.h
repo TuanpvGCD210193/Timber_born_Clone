@@ -55,6 +55,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber")
 	int32 CarriedWoodAmount = 0;
 
+	/** Đang giữ tài nguyên dư vì hiện không có kho nào còn chỗ chứa. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timber|Inventory")
+	bool bWaitingForStorageSpace = false;
+
 	// ==========================================
 	// THIẾT LẬP DEBUG LEVEL
 	// ==========================================
@@ -68,13 +72,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Debug")
 	int32 DebugLevel = 1;
 
-	/** Bán kính tối đa Hải ly rảnh được phép tản bộ quanh Nhà Chính. */
+	/** Bán kính tối đa Hải ly rảnh được phép tản bộ quanh tâm công việc gần nhất. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Idle", meta = (ClampMin = "2", ClampMax = "20"))
 	int32 IdleRoamRadius = 8;
 
 	/** Khoảng nghỉ ngắn nhất giữa hai lượt tản bộ. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Idle", meta = (ClampMin = "0.0"))
-	float IdleRoamMinWait = 1.0f;
+	float IdleRoamMinWait = 3.0f;
 
 	/** Khoảng nghỉ dài nhất giữa hai lượt tản bộ. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timber|Idle", meta = (ClampMin = "0.0"))
@@ -211,6 +215,9 @@ protected:
 	UPROPERTY()
 	TWeakObjectPtr<ATimberDistrictCenter> AssignedDistrictCenter;
 
+	/** Công trình/nơi nhận nhiệm vụ gần nhất dùng làm tâm idle roam. */
+	TWeakObjectPtr<ATimberBuildingBase> IdleRoamAnchorBuilding;
+
 	/** True khi MovingToTarget chỉ là đi dạo, không phải job. */
 	bool bIsIdleRoaming = false;
 
@@ -227,7 +234,7 @@ protected:
 	/** Cập nhật logic của trạng thái FSM hiện tại */
 	void UpdateFSM(float DeltaTime);
 
-	/** Chọn một ô DirtPath ngẫu nhiên trong phạm vi gần Nhà Chính để tản bộ. */
+	/** Chọn một ô địa hình đi được trong phạm vi quanh workplace/job gần nhất để tản bộ. */
 	bool TryStartIdleRoam();
 
 	/** Vẽ thông tin Debug 3D theo DebugLevel */
